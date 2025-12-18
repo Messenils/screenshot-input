@@ -19,9 +19,10 @@
 #include <cstdlib> // For strtoul
 #include <dwmapi.h>
 #include <thread>
+#include "MessageFilterHooks.h"
 #include "dllmain.h"
+#include "PostKeyFunction.cpp"
 #pragma comment(lib, "dwmapi.lib")
-
 
 #pragma comment(lib, "Xinput9_1_0.lib")
 
@@ -66,9 +67,6 @@ BOOL WINAPI HookedAdjustWindowRect(LPRECT lprc, DWORD  dwStyle, BOOL bMenu) {
     return result;
 }
 
-
-
-
 SHORT WINAPI HookedGetAsyncKeyState(int vKey)
 {
     if (keyState[vKey] & 0x80) {
@@ -109,8 +107,8 @@ BOOL WINAPI HookedGetKeyboardState(PBYTE lpKeyState) {
     if (!lpKeyState) {
         return FALSE;
     }
-
-    // Call the original function to get real states
+    
+    // Call the original function to get real states //disabled cause of testing
    // BOOL result = fpGetKeyboardState(lpKeyState);
     memset(lpKeyState, 0, 256);
     // Overlay fake states
@@ -118,12 +116,12 @@ BOOL WINAPI HookedGetKeyboardState(PBYTE lpKeyState) {
         if (keyState[vk] & 0x80) {
             lpKeyState[vk] |= 0x80;   // force down
         }
-        else {
+        else { //not needed if fpGetKeyboardState
             lpKeyState[vk] &= ~0x80;  // force up
         }
     }
 
-    return true;
+    return TRUE;
 }
 
 
@@ -139,13 +137,13 @@ UINT WINAPI HookedGetRawInputData(
 
     if (uiCommand == RID_INPUT && pData != nullptr) {
         RAWINPUT* raw = (RAWINPUT*)pData;
-		raw->header.wParam = RIM_INPUT; // Ensure wParam indicates input
-        if (raw->header.dwType == RIM_TYPEMOUSE) {
+	//	raw->header.wParam = RIM_INPUT; // Ensure wParam indicates input
+        if (raw->header.dwType == RIM_TYPEMOUSE && raw->header.wParam == RIM_INPUT) {
 
             if (delta.x !=0)
-                raw->data.mouse.lLastX = delta.x;
+                raw->data.mouse.lLastX = raw->data.mouse.lLastX + delta.x;
             if (delta.y != 0)
-                raw->data.mouse.lLastY = delta.y;
+                raw->data.mouse.lLastY = raw->data.mouse.lLastY + delta.y;
 
 			if (rawmouseR == true || rawmouseL == true || rawmouseWd == true || rawmouseWu == true)
                 raw->data.mouse.usButtonFlags = 0;
@@ -200,43 +198,46 @@ SHORT WINAPI HookedGetKeyState(int nVirtKey) {
     }
 }
 
-//HWND WINAPI HookedCreateWindowExA( DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth,  int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
-//{
+HWND WINAPI HookedCreateWindowExA( DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth,  int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+{
     // Call the original function
- //   HWND hWnd = fpCreateWindowExA(
- //       dwExStyle, lpClassName, lpWindowName, dwStyle,
- //       X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
-//
- //   if (hWnd) {
- //       g_windows.push_back(hWnd);
- //       // Optional: debug output
- //       // printf("Created window: %s, handle=%p\n", lpWindowName, hWnd);
- //   }
-//
- //   return hWnd;
-//}
+    HWND hWnd = fpCreateWindowExA(
+        dwExStyle, lpClassName, lpWindowName, dwStyle,
+        X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
 
-//HWND WINAPI HookedCreateWindowExW(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
-//{
+    if (hWnd) {
+        g_windows.push_back(hWnd);
+        // Optional: debug output
+        // printf("Created window: %s, handle=%p\n", lpWindowName, hWnd);
+    }
+
+    return hWnd;
+}
+
+HWND WINAPI HookedCreateWindowExW(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+{
 //    // Call the original function
-//    HWND hWnd = fpCreateWindowExW(
-//        dwExStyle, lpClassName, lpWindowName, dwStyle,
-//        X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
-//
- //   if (hWnd) {
-//        g_windows.push_back(hWnd);
-//
+    HWND hWnd = fpCreateWindowExW(
+        dwExStyle, lpClassName, lpWindowName, dwStyle,
+                X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+
+    if (hWnd) {
+       g_windows.push_back(hWnd);
+
         // Optional: debug output
         // wprintf(L"Created window: %s, handle=%p\n", lpWindowName, hWnd);
-//    }
+    }
 
-//    return hWnd;
-//}
-
+    return hWnd;
+}
+bool inwindow = true;
 BOOL WINAPI MyGetCursorPos(PPOINT lpPoint) {
     if (lpPoint) 
     {
         POINT mpos;
+        mpos.y = Yf;
+        mpos.x = Xf;
+
         if (scrollmap == false)
         { 
 
@@ -247,12 +248,11 @@ BOOL WINAPI MyGetCursorPos(PPOINT lpPoint) {
 				lpPoint->y = mpos.y;    
             }
             else {
-                mpos.x = Xf; //hwnd coordinates 0-800 on a 800x600 window
-                mpos.y = Yf;//hwnd coordinate s0-600 on a 800x600 window
-
-                ClientToScreen(hwnd, &mpos);
-		
-                lpPoint->x = mpos.x; //desktop coordinates
+                if (hwnd)
+                {
+                    ClientToScreen(hwnd, &mpos);
+                }
+                lpPoint->x = mpos.x;
                 lpPoint->y = mpos.y;
             }
         }
@@ -261,14 +261,17 @@ BOOL WINAPI MyGetCursorPos(PPOINT lpPoint) {
 		{
             mpos.x = scroll.x;
             mpos.y = scroll.y;
+            if (hwnd)
+            { 
+                ClientToScreen(hwnd, &mpos);
+            }
 
-            ClientToScreen(hwnd, &mpos);
-			lpPoint->x = mpos.x;
-			lpPoint->y = mpos.y;
+            lpPoint->x = mpos.x;
+            lpPoint->y = mpos.y;
 		}
-        return true;
+        return TRUE;
     }
-    return false;
+    return FALSE;
 }
 BOOL WINAPI HookedGetCursorInfo(PCURSORINFO pci) {
     bool result = fpGetCursorInfo(pci);
@@ -279,7 +282,7 @@ BOOL WINAPI HookedGetCursorInfo(PCURSORINFO pci) {
         pci->ptScreenPos.x = nypt.x;
         pci->ptScreenPos.y = nypt.y;
     }
-    return true;
+    return TRUE;
 }
 POINT mpos;
 BOOL WINAPI MySetCursorPos(int X, int Y) {
@@ -292,46 +295,55 @@ BOOL WINAPI MySetCursorPos(int X, int Y) {
         Xf = point.x; 
         Yf = point.y; 
     }
-    return true; //fpSetCursorPos(lpPoint); // Call the original SetCursorPos function
+    return TRUE; //fpSetCursorPos(lpPoint); // Call the original SetCursorPos function
 }
 BOOL WINAPI HookedClipCursor(const RECT* lpRect) {
     return true; //nonzero bool or int
     //return originalClipCursor(nullptr);
 
 }
-POINT windowres(HWND window, int ignorerect)
+POINT windowpos(HWND window, int ignorerect, bool getpos) //return pos if true
 {
-    POINT res = {0,0};
     if (ignorerect == 0)
     {
+        POINT pos = { 0,0 };
         RECT recte;
-        GetClientRect(window, &recte);
-        res.x = recte.right - recte.left;
-        res.y = recte.bottom - recte.top;
+        GetWindowRect(window, &recte);
+        if (getpos) {
+            pos.x = recte.left;
+            pos.y = recte.top;
+        }
+        else {
+            pos.x = recte.right - recte.left;
+            pos.y = recte.bottom - recte.top;
+        }
+        return pos;
     }
     else
     {
+        POINT pos = { 0,0 };
         RECT frameBounds;
         HRESULT hr = DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &frameBounds, sizeof(frameBounds));
         if (SUCCEEDED(hr))
         {
-            // These are the actual visible edges of the window in client coordinates
-            POINT upper;
-            upper.x = frameBounds.left;
-            upper.y = frameBounds.top;
-
-
-            res.x = frameBounds.right - frameBounds.left;
-            res.y = frameBounds.bottom - frameBounds.top;
+            if (getpos)
+            {
+                pos.x = frameBounds.left;
+                pos.y = frameBounds.top;
+            }
+            else
+            {
+                pos.x = frameBounds.right - frameBounds.left;
+                pos.y = frameBounds.bottom - frameBounds.top;
+            }
         }
-
+        return pos;
     }
-    return res;
 }
 POINT GetStaticFactor(POINT pp, int doscale, bool isnotbmp)
 {
    // FLOAT ny;
-    POINT currentres = windowres(hwnd, ignorerect);
+    POINT currentres = windowpos(hwnd, ignorerect, false);
     FLOAT currentwidth = static_cast<float>(currentres.x);
     FLOAT currentheight = static_cast<float>(currentres.y);
     if (doscale == 1)
@@ -418,7 +430,14 @@ BOOL WINAPI HookedRegisterRawInputDevices(PRAWINPUTDEVICE pRawInputDevices, UINT
     for (UINT i = 0; i < uiNumDevices; ++i) {
         pRawInputDevices[i].dwFlags |= RIDEV_INPUTSINK;
     }
+    if (pRawInputDevices[0].hwndTarget == NULL)
+        MessageBoxA(NULL, "RegisterRawInputDevices failed! Window is NULL", "Error", MB_OK | MB_ICONERROR);
     BOOL result = fpRegisterRawInputDevices(pRawInputDevices, uiNumDevices, cbSize);
+    hwnd = pRawInputDevices[0].hwndTarget;
+    if (result == FALSE)
+    {
+        MessageBoxA(NULL, "RegisterRawInputDevices failed!", "Error", MB_OK | MB_ICONERROR);
+	}
     return result;
 }
 void SetupHook() {
@@ -476,17 +495,32 @@ void SetupHook() {
         MH_CreateHook(&GetKeyboardState, &HookedGetKeyboardState, reinterpret_cast<LPVOID*>(&fpGetKeyboardState));
         MH_EnableHook(&GetKeyboardState);
     }
-   // MH_CreateHook(&CreateWindowExA, &HookedCreateWindowExA, reinterpret_cast<LPVOID*>(&fpCreateWindowExA));
+
+    // this was to gather all created windows in an array for postmessage. not seen it effective yet
+  //  MH_CreateHook(&CreateWindowExA, &HookedCreateWindowExA, reinterpret_cast<LPVOID*>(&fpCreateWindowExA));
   //  MH_EnableHook(&CreateWindowExA);
-  //  MH_CreateHook(&CreateWindowExW, &HookedCreateWindowExW, reinterpret_cast<LPVOID*>(&fpCreateWindowExW));
-  //  MH_EnableHook(&CreateWindowExW); //RegisterRawInputDevices //
+  ///  MH_CreateHook(&CreateWindowExW, &HookedCreateWindowExW, reinterpret_cast<LPVOID*>(&fpCreateWindowExW));
+  //  MH_EnableHook(&CreateWindowExW);
+
     if (registerrawinputhook)
     { 
         MH_CreateHook(&RegisterRawInputDevices, &HookedRegisterRawInputDevices, reinterpret_cast<LPVOID*>(&fpRegisterRawInputDevices));
         MH_EnableHook(&RegisterRawInputDevices);
     }
-
-    //MessageBox(NULL, "Bmp + last setcursor. done", "other search", MB_OK | MB_ICONINFORMATION);
+    if (g_filterRawInput || g_filterMouseMove || g_filterMouseActivate || g_filterWindowActivate
+        || g_filterWindowActivateApp || g_filterMouseWheel || g_filterMouseButton || g_filterKeyboardButton) // If one of them is enabled
+    { // MessageFilter hooks
+        // FIX: Add "MessageFilterHook::" before the function names
+        MH_CreateHook(&GetMessageA, &ScreenshotInput::MessageFilterHook::Hook_GetMessageA, reinterpret_cast<LPVOID*>(&fpGetMessageA));
+        MH_EnableHook(&GetMessageA);
+        MH_CreateHook(&GetMessageW, &ScreenshotInput::MessageFilterHook::Hook_GetMessageW, reinterpret_cast<LPVOID*>(&fpGetMessageW));
+        MH_EnableHook(&GetMessageW);
+        MH_CreateHook(&PeekMessageA, &ScreenshotInput::MessageFilterHook::Hook_PeekMessageA, reinterpret_cast<LPVOID*>(&fpPeekMessageA));
+        MH_EnableHook(&PeekMessageA);
+        MH_CreateHook(&PeekMessageW, &ScreenshotInput::MessageFilterHook::Hook_PeekMessageW, reinterpret_cast<LPVOID*>(&fpPeekMessageW));
+        MH_EnableHook(&PeekMessageW);
+    }
+    //MessageBox(NULL, "hooks done", "okay", MB_OK | MB_ICONINFORMATION);
     hooksinited = true;
     //MH_EnableHook(MH_ALL_HOOKS);
 }
@@ -525,6 +559,9 @@ bool SendMouseClick(int x, int y, int z, int many) {
     if (sendfocus == 1)
         Focuser();
     POINT heer;
+     
+    unsigned int sig = ScreenshotInput_MOUSE_SIGNATURE;
+
     heer.x = x;
     heer.y = y;
     if (getcursorposhook == 2)
@@ -534,39 +571,47 @@ bool SendMouseClick(int x, int y, int z, int many) {
         LPARAM clickPos = MAKELPARAM(heer.x, heer.y);
         if ( z == 1){
             
-            PostMessage(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, clickPos);
-            PostMessage(hwnd, WM_LBUTTONUP, 0, clickPos);
+            unsigned int wParamDown = VK_LBUTTON | sig; // Add signature
+            unsigned int  wParamUp = 0 | sig;            // Add signature
 
-           // musLB = true;
-			//Sleep(5);
-           // rawmouse[0] = false;
-
+            PostMessage(hwnd, WM_LBUTTONDOWN, wParamDown, clickPos);
+            PostMessage(hwnd, WM_LBUTTONUP, wParamUp, clickPos);
             keystatesend = VK_LEFT;
         }
         if (z == 2) {
             
-            PostMessage(hwnd, WM_RBUTTONDOWN, MK_RBUTTON, clickPos);
-            PostMessage(hwnd, WM_RBUTTONUP, 0, clickPos);
+            unsigned int  wParamDown = VK_RBUTTON | sig;
+            unsigned int  wParamUp = 0 | sig;
+
+            PostMessage(hwnd, WM_RBUTTONDOWN, wParamDown, clickPos);
+            PostMessage(hwnd, WM_RBUTTONUP, wParamUp, clickPos);
         }
         if (z == 3) {
-            PostMessage(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, clickPos);
+            unsigned int  wParamDown = VK_LBUTTON | sig;
+
+            unsigned int mouseMkFlags = VK_LBUTTON | sig;
+            PostMessage(hwnd, WM_LBUTTONDOWN, mouseMkFlags, clickPos);
             keystatesend = VK_LEFT;
             musLB = true;
         }
         if (z == 4)
         {
-            PostMessage(hwnd, WM_LBUTTONUP, 0, clickPos);
+            unsigned int wParamUp = 0 | sig;
+            PostMessage(hwnd, WM_LBUTTONUP, wParamUp, clickPos);
             musLB = false;
 
         }
         if (z == 5) {
-            PostMessage(hwnd, WM_RBUTTONDOWN, MK_RBUTTON, clickPos);
+            unsigned int wParamDown = VK_RBUTTON | sig;
+
+            PostMessage(hwnd, WM_RBUTTONDOWN, wParamDown, clickPos);
             keystatesend = VK_RIGHT;
             musRB = true;
         }
         if (z == 6)
         {
-            PostMessage(hwnd, WM_RBUTTONUP, 0, clickPos);
+            unsigned int wParamUp = 0 | sig;
+            PostMessage(hwnd, WM_RBUTTONUP, wParamUp, clickPos);
             musRB = false;
 
         }
@@ -584,16 +629,18 @@ bool SendMouseClick(int x, int y, int z, int many) {
                 wParam = MAKEWPARAM(0, 120);
                 rawmouseWu = true;
             }
+            wParam |= sig; //
             PostMessage(hwnd, WM_MOUSEWHEEL, wParam, clickPos);
         }
         if (z == 30) //WM_LBUTTONDBLCLK
         {
-            PostMessage(hwnd, WM_LBUTTONDBLCLK, 0, clickPos);
+            unsigned int  wParam = 0 | sig;
+            PostMessage(hwnd, WM_LBUTTONDBLCLK, wParam, clickPos);
         }
         else if (z == 8 || z == 10 || z == 11) //only mousemove
         {
-            
-            PostMessage(hwnd, WM_MOUSEMOVE, 0, clickPos);
+            unsigned int  wParam = 0 | sig;
+            PostMessage(hwnd, WM_MOUSEMOVE, wParam, clickPos);
             //PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
 
         }
@@ -695,7 +742,6 @@ std::wstring WGetExecutableFolder() {
 
     if (lastSlash == std::wstring::npos)
         return L"";
-
     return exePath.substr(0, lastSlash);
 }
 
@@ -735,8 +781,13 @@ HWND GetMainWindowHandle(DWORD targetPID) {
         DWORD windowPID = 0;
         GetWindowThreadProcessId(hWnd, &windowPID);
         if (windowPID == pData->pid && GetWindow(hWnd, GW_OWNER) == nullptr && IsWindowVisible(hWnd)) {
-            pData->hwnd = hWnd;
-            return FALSE; // Stop enumeration
+         //   POINT reshere = windowpos(hWnd, ignorerect, false); // ignore splash windows
+         //   if (reshere.x < 500 && reshere.y < 500) 
+		//		return TRUE; 
+         //   else {
+                pData->hwnd = hWnd;
+                return FALSE; // Stop enumeration
+          //  }
         }
         return TRUE; // Continue
         };
@@ -913,9 +964,9 @@ void DrawGreenTriangle(HDC hdc, int x, int y)
     HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
 
     POINT pts[3];
-    pts[0].x = x + 10; pts[0].y = y;        // top center
-    pts[1].x = x;      pts[1].y = y + 20;   // bottom left
-    pts[2].x = x + 20; pts[2].y = y + 20;   // bottom right
+    pts[0].x = x; pts[0].y = y - 10;        // top center
+    pts[1].x = x - 10; pts[1].y = y + 10;   // bottom left
+    pts[2].x = x + 10; pts[2].y = y + 10;   // bottom right
 
     Polygon(hdc, pts, 3);
 
@@ -1097,7 +1148,7 @@ void DrawToHDC(HDC hdcWindow, int X, int Y, int showmessage)
 
 void DblBufferAndCallDraw(HDC cursorhdc, int X, int Y, int showmessage) {
 
-    POINT res = windowres(hwnd, ignorerect);
+    POINT res = windowpos(hwnd, ignorerect, false);
     int width = res.x;
     int height = res.y;
 
@@ -1481,26 +1532,42 @@ void PostKeyFunction(HWND hwnd, int keytype, bool press) {
         mykey = VK_ADD;
 
     UINT scanCode = MapVirtualKey(mykey, MAPVK_VK_TO_VSC);
-    LPARAM lParam;
+    unsigned int lParam;
+    lParam;
     if (press)
     { 
-        keystatesend = mykey; //not used now
-        lParam = (0x00000001 | (scanCode << 16));
+
+        lParam = 1;                  // repeat count
+        lParam |= (scanCode << 16);         // scan code
+        lParam |= (0 << 30);                // previous state
+        lParam |= (0 << 31);                // transition state (0 = key down)
     }
     else
     {
-        lParam = (1 | (scanCode << 16) | (1 << 30) | (1 << 31));
-        keystatesend = 0;
+        BOOL isExtended = (mykey == VK_LEFT || mykey == VK_RIGHT ||
+            mykey == VK_UP || mykey == VK_DOWN ||
+            mykey == VK_INSERT || mykey == VK_DELETE ||
+            mykey == VK_HOME || mykey == VK_END ||
+            mykey == VK_PRIOR || mykey == VK_NEXT ||
+            mykey == VK_RCONTROL || mykey == VK_RMENU);
+
+        unsigned int lparam = 0;
+        lparam |= 1; // Repeat count (always 1 for key up)
+       // lparam |= (mykey.MakeCode << 16); // Scan code
+        lparam |= (1 << 30); // Previous key state (always 1 for key up)
+        lparam |= (1 << 31); // Transition state (always 1 for key up)
+
+        keystatesend = 0; 
     }
     
-
-    PostMessage(hwnd, presskey, mykey, lParam);
-  //  for (HWND ahwnd : g_windows)
-		//  { //multiwindow support
+    LPARAM ScreenshotInput_KEYBOARD_SIGNATUR = 0x10000000;
+    PostMessage(hwnd, presskey, ScreenshotInput_KEYBOARD_SIGNATUR |= mykey, lParam);
+ //   for (HWND ahwnd : g_windows)
+	//  { //multiwindow support
   //      if (IsWindow(ahwnd) && hwnd != hwnd)
- //       {
+   //     {
   //          PostMessage(ahwnd, presskey, mykey, lParam);
-  //      }
+   //     }
   //  }
    // PostMessage(hwnd, WM_INPUT, VK_RIGHT, lParam);
     if (rawinputhook == 1 || rawinputhook == 2)
@@ -1946,6 +2013,8 @@ void GetWindowDimensions(HWND pointerWindow)
 
     if (IsWindow(tHwnd))
     {
+        //point pos: windowpos(hwnd, ignorerect, true)
+        //point res: windowpos(hwnd, ignorerect, false)
         RECT cRect;
         GetClientRect(tHwnd, &cRect);
 
@@ -2136,8 +2205,7 @@ DWORD WINAPI WindowThreadProc(LPVOID) {
     return 0;
 }
 
-RECT oldrect;
-POINT oldposcheck;
+
 
 void pollbuttons(WORD buttons, RECT rect)
 {
@@ -2955,6 +3023,12 @@ bool readsettings(){
     GetPrivateProfileString(iniSettings.c_str(), "Radial_Deadzone", "0.2", buffer, sizeof(buffer), iniPath.c_str());
     radial_deadzone = std::stof(buffer); //sensitivity
 
+    //window set pos
+    posX = GetPrivateProfileInt(iniSettings.c_str(), "posX", 0, iniPath.c_str());
+    posY = GetPrivateProfileInt(iniSettings.c_str(), "posY", 0, iniPath.c_str());
+    resX = GetPrivateProfileInt(iniSettings.c_str(), "resX", 0, iniPath.c_str());
+    resY = GetPrivateProfileInt(iniSettings.c_str(), "resY", 0, iniPath.c_str());
+
     GetPrivateProfileString(iniSettings.c_str(), "Axial_Deadzone", "0.0", buffer, sizeof(buffer), iniPath.c_str());
     axial_deadzone = std::stof(buffer); //sensitivity
 
@@ -3156,13 +3230,12 @@ void ThreadFunction(HMODULE hModule)
     {
         //messagebox? settings not read
     }
-    Sleep(1000);
+    Sleep(findwindowdelay * 1000);
 
    
     hwnd = GetMainWindowHandle(GetCurrentProcessId());
-
+    RECT rect;
     bool Aprev = false;
-
     if (scanoption == 1)
     { //starting bmp conttinous scanner
         std::thread tree(ScanThread, g_hModule, AuseStatic, BuseStatic, XuseStatic, YuseStatic);
@@ -3186,7 +3259,14 @@ void ThreadFunction(HMODULE hModule)
             hwnd = GetMainWindowHandle(GetCurrentProcessId());
         }
         else
-        {
+		{ // maybe inject hooks here instead. also getcursorpos first, and set Xf Yf to pos to let Xf and Yf countinue where real cursor pos left off
+            //POINT screenpos = getcursorpos(&pos)  get window pos: POINT windowpos = windowpos( hwnd, ignorerect, true) width: POINT Windowres = windowpos( hwnd, ignorerect, false)
+            //if in bounds: if (screenpos.x > windowpos.x && screenpos.y > windowpos.y && screenpos.x < windowpos.x + windowres.x && screenpos.y < windowpos.y + windowres.y) //then in bounds
+                //Xf = screenpos.x - windowpos.x; Yf = screenpos.y - windowpos.y; //set fake cursor to real cursor pos. looks correct
+            if (hooksoninit == 2 && hooksinited == false)
+            {
+                SetupHook();
+            }
             if (!inithere)
             {
                 if (!enumeratebmps()) //always this before initovector
@@ -3195,6 +3275,14 @@ void ThreadFunction(HMODULE hModule)
                         MessageBoxA(NULL, "Error. scanoption without bmps", "No BMPS found", MB_OK);
                     scanoption = 0;
                 }
+
+				//resize window if set in ini
+                if (resX != 0)
+                {
+                    SetWindowLong(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+                    SetWindowPos(hwnd, NULL, posX, posY, resX, resY, SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+
                 staticPointA.assign(numphotoA + 1, POINT{ 0, 0 });
                 staticPointB.assign(numphotoB + 1, POINT{ 0, 0 });
                 staticPointX.assign(numphotoX + 1, POINT{ 0, 0 });
@@ -3203,12 +3291,8 @@ void ThreadFunction(HMODULE hModule)
                 inithere = true;
             }
 			//   
-            RECT rect;
-			POINT poscheck;
-            GetClientRect(hwnd, &rect);
-			poscheck.x = rect.left;
-            poscheck.y = rect.top;
-			ClientToScreen(hwnd, &poscheck);
+			POINT poscheck = windowpos(hwnd, ignorerect, true);
+            POINT rescheck = windowpos(hwnd, ignorerect, false);
             if (drawfakecursor == 2 || drawfakecursor == 3)
             {//fake cursor window creation
                 
@@ -3230,11 +3314,12 @@ void ThreadFunction(HMODULE hModule)
                     }
 				    window = true;
                 }
-                else if (oldrect.left != rect.left || oldrect.right != rect.right || oldrect.top != rect.top || oldrect.bottom != rect.bottom || oldposcheck.x != poscheck.x || oldposcheck.y != poscheck.y)
+                else if (poscheck.x != oldposcheck.x || oldposcheck.y != oldposcheck.y || oldrescheck.y != oldrescheck.y || oldrescheck.x != oldrescheck.x)
                 {
                     EnterCriticalSection(&critical);
                     if (pointerWindow)
                         SendMessage(pointerWindow, WM_MOVE_pointerWindow, 0, 0); 
+					//clearing points and reinit on window move or resize
                     staticPointA.clear();
                     staticPointB.clear();
                     staticPointX.clear();
@@ -3243,30 +3328,35 @@ void ThreadFunction(HMODULE hModule)
                     LeaveCriticalSection(&critical);
                     Sleep(1000); //pause renderiing
                 }
+
                 oldposcheck.x = poscheck.x;
                 oldposcheck.y = poscheck.y;
-                oldrect.left = rect.left;
-                oldrect.right = rect.right;
-                oldrect.top = rect.top;
-                oldrect.bottom = rect.bottom;
+
+                oldrescheck.x = rescheck.x;
+                oldrescheck.y = rescheck.y;
+
 			}
 			
             if (ignorerect == 1)
             {
                     // These are the actual visible edges of the window in client coordinates
-                    POINT upper = windowres(hwnd, ignorerect);
+                    POINT upper = windowpos(hwnd, ignorerect, true);
+                    POINT lower = windowpos(hwnd, ignorerect, false);
 
                     //used in getcursrorpos
                     rectignore.x = upper.x;
-                    rectignore.y = upper.y;
+                    rectignore.y = upper.y; //+titlebar if any?
 
-                    rect.right = upper.x;
-                    rect.bottom = upper.y;
-                    rect.left = 0;
+                    rect.right = lower.x + upper.x; //+ upper?
+                    rect.bottom = lower.y + upper.y;//+ upper?
+                    rect.left = 0; //upper?
                     rect.top = 0;
 
             }
-
+            else 
+            {
+                GetClientRect(hwnd, &rect);
+			}
             XINPUT_STATE state;
             ZeroMemory(&state, sizeof(XINPUT_STATE));
             // Check controller 0
@@ -3301,12 +3391,13 @@ void ThreadFunction(HMODULE hModule)
                     int Yaxis = 0;
 					int scrollXaxis = 0;
 					int scrollYaxis = 0;    
-                    int width = rect.right - rect.left;
-                    int height = rect.bottom - rect.top;
+                    POINT resw = windowpos(hwnd, ignorerect, false);
+                    int width = resw.x;
+                    int height = resw.y;
                     int Yscroll = 0;
                     int Xscroll = 0;
                     bool didscroll = false;
-
+                    
 				 
                     if (righthanded == 1) {
                         Xaxis = state.Gamepad.sThumbRX;
@@ -3569,10 +3660,12 @@ void ThreadFunction(HMODULE hModule)
 
 
                     }
-                    if (Xf < rect.left) Xf = rect.left;
-                    if (Xf > rect.right) Xf = rect.right;
-                    if (Yf < rect.top) Yf = rect.top;
-                    if (Yf > rect.bottom) Yf = rect.bottom;
+                    
+                    //may freeze cursor here. dont know why yet
+                    if (Xf > width) Xf = width;
+                    if (Yf > height) Yf = height;
+                    if (Yf < 0) Yf = 0; 
+                    if (Xf < 0) Xf = 0;
 
                     if (movedmouse == true) //fake cursor move message
                     {
@@ -3689,26 +3782,30 @@ void ThreadFunction(HMODULE hModule)
                         rightPressedold = false;
                         rawmouseL = false;
                     }
-                } //rightpress
+                } //if rightpress
 
-                } // mode above 0
-            } //no controller
+                } //if mode above 0
+            } //if controller
             else {
                 showmessage = 12;
 				//MessageBoxA(NULL, "Controller not connected", "Error", MB_OK | MB_ICONERROR);
             }
-            //drawing
+
+
+			//rendering. 3 methods. 1 direct draw. 2 partial on own window. 3 full redraw double buffer on own window
             if (drawfakecursor == 1)
                 GetGameHDCAndCallDraw(hwnd); //calls DrawToHdc in here
             else if (drawfakecursor == 2)
                 {
                 if (scanoption)
                     DblBufferAndCallDraw(PointerWnd, Xf, Yf, showmessage); //full redraw
-                else if (movedmouse) DrawToHDC(PointerWnd, Xf, Yf, showmessage); //partial, faster
+				else if (movedmouse) DrawToHDC(PointerWnd, Xf, Yf, showmessage); //partial, much faster. may not erase correctly on staticpoints and messages yet
                 }
             else if (drawfakecursor == 3)
                 DblBufferAndCallDraw(PointerWnd, Xf, Yf, showmessage); //full redraw
-        } // no hwnd
+
+
+        } // if hwnd
         if (showmessage != 0 && showmessage != 12)
         {
             counter++;
@@ -3734,7 +3831,6 @@ void ThreadFunction(HMODULE hModule)
       //  if (pointerWindow) {
       //      ReleaseDC(pointerWindow, PointerWnd);
       //  }
-        //ticks for scroll end delay
 		if (rawinputhook == 1) //to make game poll rawinput
         { 
             INPUT input = { 0 }; 
@@ -3791,11 +3887,23 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             rightrect = GetPrivateProfileInt(iniSettings.c_str(), "SetRectRight", 800, iniPath.c_str());
             bottomrect = GetPrivateProfileInt(iniSettings.c_str(), "SetRectBottom", 600, iniPath.c_str());
             registerrawinputhook = GetPrivateProfileInt(iniSettings.c_str(), "RegisterRawInputHook", 1, iniPath.c_str());
-            int hooksoninit = GetPrivateProfileInt(iniSettings.c_str(), "hooksoninit", 1, iniPath.c_str());
-            if (hooksoninit)
+
+            // [MessageFilter]
+            g_filterRawInput = GetPrivateProfileInt(iniSettings.c_str(), "RawInputFilter", 0, iniPath.c_str());
+            g_filterMouseMove = GetPrivateProfileInt(iniSettings.c_str(), "MouseMoveFilter", 0, iniPath.c_str());
+            g_filterMouseActivate = GetPrivateProfileInt(iniSettings.c_str(), "MouseActivateFilter", 0, iniPath.c_str());
+            g_filterWindowActivate = GetPrivateProfileInt(iniSettings.c_str(), "WindowActivateFilter", 0, iniPath.c_str());
+            g_filterWindowActivateApp = GetPrivateProfileInt(iniSettings.c_str(), "WindowActivateAppFilter", 0, iniPath.c_str());
+            g_filterMouseWheel = GetPrivateProfileInt(iniSettings.c_str(), "MouseWheelFilter", 0, iniPath.c_str());
+            g_filterMouseButton = GetPrivateProfileInt(iniSettings.c_str(), "MouseButtonFilter", 0, iniPath.c_str());
+            g_filterKeyboardButton = GetPrivateProfileInt(iniSettings.c_str(), "KeyboardButtonFilter", 0, iniPath.c_str());
+
+            //hook at once or wait for input
+            hooksoninit = GetPrivateProfileInt(iniSettings.c_str(), "hooksoninit", 1, iniPath.c_str());
+			if (hooksoninit == 1) //if 2 then just after window found
                 {
                 SetupHook();
-			}
+			    }
            InitializeCriticalSection(&critical);
            std::thread one (ThreadFunction, g_hModule);
            one.detach();

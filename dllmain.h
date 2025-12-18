@@ -42,14 +42,29 @@ typedef UINT(WINAPI* GetCursorInfo_t)(PCURSORINFO pci);
 typedef HWND(WINAPI* CreateWindowExA_t)( DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
 typedef HWND(WINAPI* CreateWindowExW_t)( DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int  nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam );
 
+typedef BOOL(WINAPI* GetMessageA_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
+typedef BOOL(WINAPI* GetMessageW_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
+typedef BOOL(WINAPI* PeekMessageA_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
+typedef BOOL(WINAPI* PeekMessageW_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
+
+//BOOL(WINAPI* fpGetMessageA)(LPMSG, HWND, UINT, UINT) = nullptr;
+//BOOL(WINAPI* fpGetMessageW)(LPMSG, HWND, UINT, UINT) = nullptr;
+//BOOL(WINAPI* fpPeekMessageA)(LPMSG, HWND, UINT, UINT, UINT) = nullptr;
+//BOOL(WINAPI* fpPeekMessageW)(LPMSG, HWND, UINT, UINT, UINT) = nullptr;
+
+GetMessageA_t fpGetMessageA = nullptr;
+GetMessageW_t fpGetMessageW = nullptr;
+PeekMessageA_t fpPeekMessageA = nullptr;
+PeekMessageW_t fpPeekMessageW = nullptr;
 
 typedef BOOL(WINAPI* RegisterRawInputDevices_t)( PRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize);
-//std::vector<HWND> g_windows;
+std::vector<HWND> g_windows;
+    
+// message filter hooks
 
-    
-    
-    
-    
+
+
+
 bool rawmouseL = false;
 bool rawmouseR = false;//0:scroll 1:left 2:right 3:up 4:down
 
@@ -151,8 +166,8 @@ bool YuseStatic = 1;
 
 //fake cursor
 int controllerID = 0;
-int Xf = 20;
-int Yf = 20;
+int Xf = 100;
+int Yf = 100;
 int OldX = 0;
 int OldY = 0;
 int ydrag;
@@ -170,6 +185,7 @@ HDC PointerWnd;
 int WoldX, WoldY;
 //bmp search
 bool foundit = false;
+int hooksoninit = 0;
 
 int cursoroffsetx, cursoroffsety;
 int offsetSET; //0:sizing 1:offset 2:done
@@ -179,12 +195,30 @@ HWND pointerWindow = nullptr;
 bool DrawFakeCursorFix = false;
 static int transparencyKey = RGB(0, 0, 1);
 
+//setwindowpos
+int posX;
+int posY;
+int resX;
+int resY;
 HCURSOR oldhCursor = NULL;
 HCURSOR hCursorW = NULL;
 bool nochange = false;
 
 bool oldHadShowCursor = true;
 
+const extern WPARAM ScreenshotInput_MOUSE_SIGNATURE = 0x10000000;
+const extern LPARAM ScreenshotInput_KEYBOARD_SIGNATURE = 0x10000000;
+bool g_filterRawInput = false;
+bool g_filterMouseMove = false;
+bool g_filterMouseActivate = false;
+bool g_filterWindowActivate = false;
+bool g_filterWindowActivateApp = false;
+bool g_filterMouseWheel = false;
+bool g_filterMouseButton = true;
+bool g_filterKeyboardButton = false;
+
+POINT oldposcheck;
+POINT oldrescheck;
 
 //scroll type 3
 int tick = 0;
@@ -279,11 +313,11 @@ int Etype = 0;
 int Ftype = 0;
 
 POINT PointA;
-POINT PointB;
+POINT PointB;  
 POINT PointX;
 POINT PointY;
 int scantick = 0;
-
+int findwindowdelay = 10;
 int bmpAtype = 0;
 int bmpBtype = 0;
 int bmpXtype = 0;
