@@ -781,13 +781,13 @@ HWND GetMainWindowHandle(DWORD targetPID) {
         DWORD windowPID = 0;
         GetWindowThreadProcessId(hWnd, &windowPID);
         if (windowPID == pData->pid && GetWindow(hWnd, GW_OWNER) == nullptr && IsWindowVisible(hWnd)) {
-         //   POINT reshere = windowpos(hWnd, ignorerect, false); // ignore splash windows
-         //   if (reshere.x < 500 && reshere.y < 500) 
+        //    POINT reshere = windowpos(hWnd, ignorerect, false); // ignore splash windows
+         //   if (reshere.y < 300) 
 		//		return TRUE; 
-         //   else {
+      //      else {
                 pData->hwnd = hWnd;
                 return FALSE; // Stop enumeration
-          //  }
+        //    }
         }
         return TRUE; // Continue
         };
@@ -992,7 +992,9 @@ void DrawPinkSquare(HDC hdc, int x, int y)
     DeleteObject(hPen);
 }
 
-
+int moveH = 0;
+int moveV = 0; //intro mainly to visualize cursor window size
+bool otherway = false;
 void DrawToHDC(HDC hdcWindow, int X, int Y, int showmessage)
 {
 
@@ -1015,7 +1017,7 @@ void DrawToHDC(HDC hdcWindow, int X, int Y, int showmessage)
         }
     }
 
-    
+
     if (scanoption == 1)
     {
         EnterCriticalSection(&critical);
@@ -1041,7 +1043,53 @@ void DrawToHDC(HDC hdcWindow, int X, int Y, int showmessage)
             DrawPinkSquare(hdcWindow, Ypos.x, Ypos.y);
 
     }
+    if (showmessage == 99) //intro
+    {
+        RECT rect;
+        GetClientRect(pointerWindow, &rect);   // client coordinates
+        FillRect(hdcWindow, &rect, transparencyBrush);
 
+        TextOut(hdcWindow, rect.right / 2, rect.bottom / 2, TEXT("LOADING..."), 10);
+
+        DrawPinkSquare(hdcWindow, 20 + moveV, 20 + moveV);
+        DrawGreenTriangle(hdcWindow, rect.right - moveV - 20, rect.bottom - moveV - 20);
+        DrawBlueCircle(hdcWindow, rect.right - moveV - 20, 20 + moveV);
+        DrawRedX(hdcWindow, 20 + moveV, rect.bottom - moveV - 20);
+
+        for (int y = 0; y < 20; y++)
+        {
+            for (int x = 0; x < 20; x++)
+            {
+                int val = colorfulSword[y][x];
+                if (val != 0)
+                {
+                    HBRUSH hBrush = CreateSolidBrush(colors[val]);
+                    RECT rect = { X + x , Y + y , X + x + 1, Y + y + 1 };
+                    FillRect(hdcWindow, &rect, hBrush);
+                    DeleteObject(hBrush);
+                }
+            }
+        }
+
+        if (moveV < rect.bottom - 20 && moveV < rect.right - 20 && moveV >= 0)
+        { 
+            if (!otherway)
+                moveV += 10;
+            else moveV -= 10;
+        }
+        
+        else if (!otherway) 
+        {
+            moveV -= 10;
+            otherway = true;
+        }
+        else if (otherway)
+        {
+            moveV += 10;
+            otherway = false;
+        }
+        //showmessage will auto expire and go to 0 in mainthread
+	}
     if (showmessage == 1)
     {
         TextOut(hdcWindow, X, Y, TEXT("BMP MODE"), 8);
@@ -1533,11 +1581,11 @@ void PostKeyFunction(HWND hwnd, int keytype, bool press) {
 
     UINT scanCode = MapVirtualKey(mykey, MAPVK_VK_TO_VSC);
     unsigned int lParam;
-    lParam;
+
     if (press)
     { 
 
-        lParam = 1;                  // repeat count
+        lParam = 1;                  // repeat count 1 or 0?
         lParam |= (scanCode << 16);         // scan code
         lParam |= (0 << 30);                // previous state
         lParam |= (0 << 31);                // transition state (0 = key down)
@@ -1573,7 +1621,7 @@ void PostKeyFunction(HWND hwnd, int keytype, bool press) {
     if (rawinputhook == 1 || rawinputhook == 2)
         GenerateRawKey(mykey, press);
     if (keytype == 63) {
-        PostMessage(hwnd, presskey, 0x43, lParam); //just a key combo
+        PostMessage(hwnd, presskey, ScreenshotInput_KEYBOARD_SIGNATUR |= 0x43, lParam); //game specific key combo. Warlords Battlecry 3 convert button
     }
     return;
 
@@ -3230,8 +3278,8 @@ void ThreadFunction(HMODULE hModule)
     {
         //messagebox? settings not read
     }
-    Sleep(findwindowdelay * 1000);
-
+    //Sleep(findwindowdelay * 1000);
+    
    
     hwnd = GetMainWindowHandle(GetCurrentProcessId());
     RECT rect;
@@ -3247,6 +3295,7 @@ void ThreadFunction(HMODULE hModule)
         nodrawcursor = true;
     }
 	bool window = false;
+    showmessage = 99;
     while (loop == true)
     {
         rawmouseWu = false; //reset
@@ -3263,6 +3312,8 @@ void ThreadFunction(HMODULE hModule)
             //POINT screenpos = getcursorpos(&pos)  get window pos: POINT windowpos = windowpos( hwnd, ignorerect, true) width: POINT Windowres = windowpos( hwnd, ignorerect, false)
             //if in bounds: if (screenpos.x > windowpos.x && screenpos.y > windowpos.y && screenpos.x < windowpos.x + windowres.x && screenpos.y < windowpos.y + windowres.y) //then in bounds
                 //Xf = screenpos.x - windowpos.x; Yf = screenpos.y - windowpos.y; //set fake cursor to real cursor pos. looks correct
+
+            //postmessage WM_Mousehover Xf Yf on standard values if real was outside window? is that opposite message of WM_Mouseleave?
             if (hooksoninit == 2 && hooksinited == false)
             {
                 SetupHook();
@@ -3656,16 +3707,13 @@ void ThreadFunction(HMODULE hModule)
                         Xf += delta.x;
                         Yf += delta.y;
                         movedmouse = true;
-
-
-
                     }
                     
                     //may freeze cursor here. dont know why yet
-                    if (Xf > width) Xf = width;
-                    if (Yf > height) Yf = height;
-                    if (Yf < 0) Yf = 0; 
-                    if (Xf < 0) Xf = 0;
+                    if (Xf > width - 1) Xf = width - 1;
+                    if (Yf > height - 1) Yf = height - 1;
+                    if (Yf < 1) Yf = 1; 
+                    if (Xf < 1) Xf = 1;
 
                     if (movedmouse == true) //fake cursor move message
                     {
@@ -3852,6 +3900,8 @@ void ThreadFunction(HMODULE hModule)
         if (mode > 0) {
             Sleep(1 + responsetime);
         }
+        if (showmessage == 99)
+            Sleep(18); //30 fps?
     } //loop end but endless
     return;
 }
@@ -3901,14 +3951,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             //hook at once or wait for input
             hooksoninit = GetPrivateProfileInt(iniSettings.c_str(), "hooksoninit", 1, iniPath.c_str());
 			if (hooksoninit == 1) //if 2 then just after window found
-                {
+            {
                 SetupHook();
-			    }
+		    }
            InitializeCriticalSection(&critical);
            std::thread one (ThreadFunction, g_hModule);
            one.detach();
 			//CloseHandle(one);
-            break;
+           break;
         }
         case DLL_PROCESS_DETACH:
         {
