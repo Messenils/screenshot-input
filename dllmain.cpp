@@ -769,32 +769,80 @@ bool FindSubImage24(
     }
     return false;
 }
-HWND GetMainWindowHandle(DWORD targetPID) {
-    HWND hwnd = nullptr;
-    struct HandleData {
-        DWORD pid;
-        HWND hwnd;
-    } data = { targetPID, nullptr };
+struct HandleData
+{
+    unsigned long pid;
+    HWND hwnd;
+};
 
-    auto EnumWindowsCallback = [](HWND hWnd, LPARAM lParam) -> BOOL {
-        HandleData* pData = reinterpret_cast<HandleData*>(lParam);
-        DWORD windowPID = 0;
-        GetWindowThreadProcessId(hWnd, &windowPID);
-        if (windowPID == pData->pid && GetWindow(hWnd, GW_OWNER) == nullptr && IsWindowVisible(hWnd)) {
+BOOL IsMainWindow(HWND handle)
+{
+    // Is top level & visible & not one of ours
+    if (GetWindow(handle, GW_OWNER) == nullptr && IsWindowVisible(handle) && handle != pointerWindow)
+        return TRUE;
+    else return FALSE;
+}
+
+BOOL CALLBACK EnumWindowsCallback(HWND handle, LPARAM lParam)
+{
+    HandleData& data = *(HandleData*)lParam;
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(handle, &pid);
+
+    if (data.pid != pid || !IsMainWindow(handle))
+        return TRUE; // Keep searching
+
+    data.hwnd = handle;
+
+    return FALSE;
+}
+
+void UpdateMainHwnd(bool logOutput)
+{
+    // Go through all the top level windows, select the first that's visible & belongs to the process
+
+    HandleData data{ GetCurrentProcessId(), nullptr };
+    EnumWindows(EnumWindowsCallback, (LPARAM)&data);
+
+    const auto hwndd = (intptr_t)data.hwnd;
+
+    if (logOutput)
+    {
+        if (hwndd == 0)
+			MessageBoxA(NULL, "UpdateMainHwnd did not find a valid hwnd!", "Error", MB_OK | MB_ICONERROR);
+    }
+
+    if (data.hwnd != nullptr)
+        hwnd = data.hwnd;
+}
+
+//HWND GetMainWindowHandle(DWORD targetPID) {
+//    HWND hwnd = nullptr;
+//    struct HandleData {
+//        DWORD pid;
+ //       HWND hwnd;
+ //   } data = { targetPID, nullptr };
+//
+ //   auto EnumWindowsCallback = [](HWND hWnd, LPARAM lParam) -> BOOL {
+ //       HandleData* pData = reinterpret_cast<HandleData*>(lParam);
+ //       DWORD windowPID = 0;
+  //      GetWindowThreadProcessId(hWnd, &windowPID);
+  //      if (windowPID == pData->pid && GetWindow(hWnd, GW_OWNER) == nullptr && IsWindowVisible(hWnd)) {
         //    POINT reshere = windowpos(hWnd, ignorerect, false); // ignore splash windows
          //   if (reshere.y < 300) 
 		//		return TRUE; 
       //      else {
-                pData->hwnd = hWnd;
-                return FALSE; // Stop enumeration
+    //            pData->hwnd = hWnd;
+    //            return FALSE; // Stop enumeration
         //    }
-        }
-        return TRUE; // Continue
-        };
+    //    }
+    //    return TRUE; // Continue
+    //    };
 
-    EnumWindows(EnumWindowsCallback, reinterpret_cast<LPARAM>(&data));
-    return data.hwnd;
-}
+  //  EnumWindows(EnumWindowsCallback, reinterpret_cast<LPARAM>(&data));
+  //  return data.hwnd;
+//}
 
 int CalculateStride(int width) {
     return ((width * 3 + 3) & ~3);
@@ -1158,6 +1206,10 @@ void DrawToHDC(HDC hdcWindow, int X, int Y, int showmessage)
     else if (showmessage == 70)
     {
         TextOut(hdcWindow, X, Y, TEXT("STARTING!"), 10);
+    }
+    else if (showmessage == 71)
+    {
+        TextOut(hdcWindow, X, Y, TEXT("WINDOW?"), 7);
     }
     if (nodrawcursor == false)
     { 
@@ -2061,19 +2113,14 @@ void GetWindowDimensions(HWND pointerWindow)
 
     if (IsWindow(tHwnd))
     {
-        //point pos: windowpos(hwnd, ignorerect, true)
-        //point res: windowpos(hwnd, ignorerect, false)
-        RECT cRect;
-        GetClientRect(tHwnd, &cRect);
-
-        POINT topLeft = { cRect.left, cRect.top };
-        ClientToScreen(tHwnd, &topLeft);
+        POINT pos = windowpos(hwnd, ignorerect, true);
+        POINT res = windowpos(hwnd, ignorerect, false);
 
         SetWindowPos(pointerWindow, HWND_TOPMOST,
-            topLeft.x,
-            topLeft.y,
-            cRect.right - cRect.left,
-            cRect.bottom - cRect.top,
+            pos.x,
+            pos.y,
+            res.x,
+            res.y,
             SWP_NOACTIVATE);
         ShowWindow(pointerWindow, SW_SHOW);
     }
@@ -2120,6 +2167,7 @@ DWORD WINAPI ScanThread(LPVOID, int Aisstatic, int Bisstatic, int Xisstatic, int
     int Bstatic = Bisstatic;
     int Xstatic = Xisstatic;
     int Ystatic = Yisstatic;
+    scanrunning = true;
     while (scanloop)
     { 
         EnterCriticalSection(&critical);
@@ -3281,7 +3329,8 @@ void ThreadFunction(HMODULE hModule)
     //Sleep(findwindowdelay * 1000);
     
    
-    hwnd = GetMainWindowHandle(GetCurrentProcessId());
+    //hwnd = GetMainWindowHandle(GetCurrentProcessId());
+    UpdateMainHwnd(true);
     RECT rect;
     bool Aprev = false;
     if (scanoption == 1)
@@ -3295,6 +3344,7 @@ void ThreadFunction(HMODULE hModule)
         nodrawcursor = true;
     }
 	bool window = false;
+	bool gotwindow = false;
     showmessage = 99;
     while (loop == true)
     {
@@ -3305,8 +3355,13 @@ void ThreadFunction(HMODULE hModule)
 		foundit = false; //reset foundit the bmp search found or not
         if (hwnd == NULL)
         {
-            hwnd = GetMainWindowHandle(GetCurrentProcessId());
+			Sleep(1000); //no enumeration spamming
+           // hwnd = GetMainWindowHandle(GetCurrentProcessId());
+            UpdateMainHwnd(true);
+            showmessage = 99; //back to intro
+            counter = 0;
         }
+        
         else
 		{ // maybe inject hooks here instead. also getcursorpos first, and set Xf Yf to pos to let Xf and Yf countinue where real cursor pos left off
             //POINT screenpos = getcursorpos(&pos)  get window pos: POINT windowpos = windowpos( hwnd, ignorerect, true) width: POINT Windowres = windowpos( hwnd, ignorerect, false)
@@ -3314,17 +3369,70 @@ void ThreadFunction(HMODULE hModule)
                 //Xf = screenpos.x - windowpos.x; Yf = screenpos.y - windowpos.y; //set fake cursor to real cursor pos. looks correct
 
             //postmessage WM_Mousehover Xf Yf on standard values if real was outside window? is that opposite message of WM_Mouseleave?
+           // UpdateMainHwnd(true); //hwnd check?
+			gotwindow = true;
+            if (!IsMainWindow(hwnd))
+            { 
+                if (scanloop)
+                    scanloop = false; //stop scan thread while no hwnd //not started yet
+                hwnd = NULL; //force update
+                while (hwnd == NULL) // cant proceed while no hwnd
+                {
+                    if (gotwindow && hooksinited)
+                    { 
+                        MH_DisableHook(MH_ALL_HOOKS);
+					    gotwindow = false;
+						
+                    }
+
+                    ShowWindow(pointerWindow, SW_SHOW);
+                    Sleep(1000); //no enumeration spamming and time for scanner shutdown
+                    //MessageBoxA(NULL, "Error. lost gamewindow", "where did it go?", MB_OK);
+                    UpdateMainHwnd(true);
+                    if (hwnd)
+                    {
+                        SendMessage(pointerWindow, WM_MOVE_pointerWindow, 0, 0); //focus to avoid alt tab issues
+                        if (scanoption == 1)
+                        { 
+                            scanloop = true; //restarting scanner
+                            std::thread treerestartn(ScanThread, g_hModule, AuseStatic, BuseStatic, XuseStatic, YuseStatic);
+                            treerestartn.detach();
+                        }
+                        showmessage = 99; //back to intro
+                        counter = 0;
+                    }
+                    else
+                    {
+                        SetWindowPos(pointerWindow, HWND_TOPMOST,
+                        0,
+                        0,
+                        300,
+                        300,
+                        SWP_NOACTIVATE);
+                    }
+				}
+            }
             if (hooksoninit == 2 && hooksinited == false)
             {
                 SetupHook();
             }
+            if (gotwindow == false && hooksinited)
+            {
+                MH_EnableHook(MH_ALL_HOOKS);
+                gotwindow = true;
+            }
+
             if (!inithere)
             {
                 if (!enumeratebmps()) //always this before initovector
                 {
                     if (scanoption)
+                    { 
                         MessageBoxA(NULL, "Error. scanoption without bmps", "No BMPS found", MB_OK);
-                    scanoption = 0;
+						scanloop = false; //force stop scan thread
+                        scanoption = 0;
+                    }
+
                 }
 
 				//resize window if set in ini

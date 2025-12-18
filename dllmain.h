@@ -102,6 +102,7 @@ HWND hwnd;
 int showmessage = 0; //0 = no message, 1 = initializing, 2 = bmp mode, 3 = bmp and cursor mode, 4 = edit mode   
 int showmessageW = 0; //0 = no message, 1 = initializing, 2 = bmp mode, 3 = bmp and cursor mode, 4 = edit mode 
 int counter = 0;
+bool scanrunning = false;
 
 //syncronization control
 HANDLE hMutex;
