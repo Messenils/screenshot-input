@@ -19,10 +19,10 @@ extern bool g_filterMouseButton;
 extern bool g_filterKeyboardButton;
 
 // External function pointers (defined in dllmain.h/cpp)
-extern BOOL(WINAPI* fpGetMessageA)(LPMSG, HWND, UINT, UINT);
-extern BOOL(WINAPI* fpGetMessageW)(LPMSG, HWND, UINT, UINT);
-extern BOOL(WINAPI* fpPeekMessageA)(LPMSG, HWND, UINT, UINT, UINT);
-extern BOOL(WINAPI* fpPeekMessageW)(LPMSG, HWND, UINT, UINT, UINT);
+//extern BOOL(WINAPI* fpGetMessageA)(LPMSG, HWND, UINT, UINT);
+//extern BOOL(WINAPI* fpGetMessageW)(LPMSG, HWND, UINT, UINT);
+//extern BOOL(WINAPI* fpPeekMessageA)(LPMSG, HWND, UINT, UINT, UINT);
+//extern BOOL(WINAPI* fpPeekMessageW)(LPMSG, HWND, UINT, UINT, UINT);
 
 namespace ScreenshotInput
 {
@@ -81,7 +81,7 @@ namespace ScreenshotInput
 
 	BOOL WINAPI MessageFilterHook::Hook_GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax)
 	{
-		const auto ret = fpGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax);
+		const auto ret = GetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax);
 		if (ret == -1 || ret == 0) return ret;
 
 		// GetMessage always removes
@@ -91,7 +91,7 @@ namespace ScreenshotInput
 
 	BOOL WINAPI MessageFilterHook::Hook_GetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax)
 	{
-		const auto ret = fpGetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax);
+		const auto ret = GetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax);
 		if (ret == -1 || ret == 0) return ret;
 
 		if (FilterMessage(lpMsg, true) == FALSE) return TRUE;
@@ -103,7 +103,7 @@ namespace ScreenshotInput
 	// ---------------------------------------------------------
 	BOOL WINAPI MessageFilterHook::Hook_PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
 	{
-		BOOL ret = fpPeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
+		BOOL ret = PeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
 
 		if (ret && lpMsg->message != WM_NULL)
 		{
@@ -116,7 +116,7 @@ namespace ScreenshotInput
 				if (!remove)
 				{
 					MSG dummy;
-					fpPeekMessageA(&dummy, hWnd, wMsgFilterMin, wMsgFilterMax, PM_REMOVE);
+					PeekMessageA(&dummy, hWnd, wMsgFilterMin, wMsgFilterMax, PM_REMOVE);
 				}
 				return FALSE; // Pretend we found nothing
 			}
@@ -126,7 +126,7 @@ namespace ScreenshotInput
 
 	BOOL WINAPI MessageFilterHook::Hook_PeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
 	{
-		BOOL ret = fpPeekMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
+		BOOL ret = PeekMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
 
 		if (ret && lpMsg->message != WM_NULL)
 		{
@@ -136,7 +136,7 @@ namespace ScreenshotInput
 				if (!remove)
 				{
 					MSG dummy;
-					fpPeekMessageW(&dummy, hWnd, wMsgFilterMin, wMsgFilterMax, PM_REMOVE);
+					PeekMessageW(&dummy, hWnd, wMsgFilterMin, wMsgFilterMax, PM_REMOVE);
 				}
 				return FALSE;
 			}

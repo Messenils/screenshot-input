@@ -1,10 +1,5 @@
 #pragma once
 
-extern BOOL(WINAPI* fpGetMessageA)(LPMSG, HWND, UINT, UINT);
-extern BOOL(WINAPI* fpGetMessageW)(LPMSG, HWND, UINT, UINT);
-extern BOOL(WINAPI* fpPeekMessageA)(LPMSG, HWND, UINT, UINT, UINT);
-extern BOOL(WINAPI* fpPeekMessageW)(LPMSG, HWND, UINT, UINT, UINT);
-
 namespace ScreenshotInput
 {
 	class MessageFilterHook

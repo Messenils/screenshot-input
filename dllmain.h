@@ -24,40 +24,63 @@ int mode = InitialMode;
 /////////////////
 bool movedmouse;
 
+HOOK_TRACE_INFO GETcursorpos = { NULL };
+HOOK_TRACE_INFO SETcursorpos = { NULL };
+HOOK_TRACE_INFO GETkeyboardstate = { NULL };
+HOOK_TRACE_INFO GETasynckeystate = { NULL };
+HOOK_TRACE_INFO GETkeystate = { NULL };
+HOOK_TRACE_INFO CLIPcursor = { NULL };
+HOOK_TRACE_INFO SETcursor = { NULL };
+HOOK_TRACE_INFO SHOWcursor = { NULL };
+HOOK_TRACE_INFO GETcursorinfo = { NULL };
+HOOK_TRACE_INFO CREATEwindowexa = { NULL };
+HOOK_TRACE_INFO CREATEwindowexw = { NULL };
+
+HOOK_TRACE_INFO SETrect = { NULL };
+HOOK_TRACE_INFO ADJUSTwindowrect = { NULL };
+
+HOOK_TRACE_INFO GETrawinputdata = { NULL };
+HOOK_TRACE_INFO REGISTERrawinputdevices = { NULL };
+
+HOOK_TRACE_INFO GETmessagea = { NULL };
+HOOK_TRACE_INFO GETmessagew = { NULL };
+HOOK_TRACE_INFO PEEKmessagea = { NULL };
+HOOK_TRACE_INFO PEEKmessagew = { NULL };
+
 HMODULE g_hModule = nullptr;
 
-typedef BOOL(WINAPI* GetCursorPos_t)(LPPOINT lpPoint);
-typedef BOOL(WINAPI* SetCursorPos_t)(int X, int Y); //GetKeyboardState
+//typedef BOOL(WINAPI* GetCursorPos_t)(LPPOINT lpPoint);
+//typedef BOOL(WINAPI* SetCursorPos_t)(int X, int Y); //GetKeyboardState
 
-typedef SHORT(WINAPI* GetKeyboardState_t)(PBYTE lpKeyState);
-typedef SHORT(WINAPI* GetAsyncKeyState_t)(int vKey);
-typedef SHORT(WINAPI* GetKeyState_t)(int nVirtKey);
-typedef BOOL(WINAPI* ClipCursor_t)(const RECT*);
-typedef HCURSOR(WINAPI* SetCursor_t)(HCURSOR hCursor);
+//typedef SHORT(WINAPI* GetKeyboardState_t)(PBYTE lpKeyState);
+//typedef SHORT(WINAPI* GetAsyncKeyState_t)(int vKey);
+//typedef SHORT(WINAPI* GetKeyState_t)(int nVirtKey);
+//typedef BOOL(WINAPI* ClipCursor_t)(const RECT*);
+//typedef HCURSOR(WINAPI* SetCursor_t)(HCURSOR hCursor);
 
-typedef BOOL(WINAPI* SetRect_t)(LPRECT lprc, int xLeft, int yTop, int xRight, int yBottom);
-typedef BOOL(WINAPI* AdjustWindowRect_t)(LPRECT lprc, DWORD  dwStyle, BOOL bMenu);
-typedef UINT(WINAPI* GetRawInputData_t)(HRAWINPUT hRawInput, UINT uiCommand, LPVOID pData, PUINT pcbSize, UINT cbSizeHeader);
-typedef UINT(WINAPI* GetCursorInfo_t)(PCURSORINFO pci);
-typedef HWND(WINAPI* CreateWindowExA_t)( DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
-typedef HWND(WINAPI* CreateWindowExW_t)( DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int  nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam );
+//typedef BOOL(WINAPI* SetRect_t)(LPRECT lprc, int xLeft, int yTop, int xRight, int yBottom);
+//typedef BOOL(WINAPI* AdjustWindowRect_t)(LPRECT lprc, DWORD  dwStyle, BOOL bMenu);
+//typedef UINT(WINAPI* GetRawInputData_t)(HRAWINPUT hRawInput, UINT uiCommand, LPVOID pData, PUINT pcbSize, UINT cbSizeHeader);
+//typedef UINT(WINAPI* GetCursorInfo_t)(PCURSORINFO pci);
+//typedef HWND(WINAPI* CreateWindowExA_t)( DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
+//typedef HWND(WINAPI* CreateWindowExW_t)( DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int  nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam );
 
-typedef BOOL(WINAPI* GetMessageA_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-typedef BOOL(WINAPI* GetMessageW_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-typedef BOOL(WINAPI* PeekMessageA_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
-typedef BOOL(WINAPI* PeekMessageW_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
+//typedef BOOL(WINAPI* GetMessageA_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
+//typedef BOOL(WINAPI* GetMessageW_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
+//typedef BOOL(WINAPI* PeekMessageA_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
+//typedef BOOL(WINAPI* PeekMessageW_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
 
 //BOOL(WINAPI* fpGetMessageA)(LPMSG, HWND, UINT, UINT) = nullptr;
 //BOOL(WINAPI* fpGetMessageW)(LPMSG, HWND, UINT, UINT) = nullptr;
 //BOOL(WINAPI* fpPeekMessageA)(LPMSG, HWND, UINT, UINT, UINT) = nullptr;
 //BOOL(WINAPI* fpPeekMessageW)(LPMSG, HWND, UINT, UINT, UINT) = nullptr;
 
-GetMessageA_t fpGetMessageA = nullptr;
-GetMessageW_t fpGetMessageW = nullptr;
-PeekMessageA_t fpPeekMessageA = nullptr;
-PeekMessageW_t fpPeekMessageW = nullptr;
+//GetMessageA_t fpGetMessageA = nullptr;
+//GetMessageW_t fpGetMessageW = nullptr;
+//PeekMessageA_t fpPeekMessageA = nullptr;
+//PeekMessageW_t fpPeekMessageW = nullptr;
 
-typedef BOOL(WINAPI* RegisterRawInputDevices_t)( PRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize);
+//typedef BOOL(WINAPI* RegisterRawInputDevices_t)( PRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize);
 std::vector<HWND> g_windows;
     
 // message filter hooks
@@ -74,20 +97,20 @@ std::vector<BYTE> keyState(256, 0);
 
 CRITICAL_SECTION critical; //window thread
 //CRITICAL_SECTION criticalA; //Scannning thread
-GetKeyboardState_t fpGetKeyboardState = nullptr;
-GetCursorPos_t fpGetCursorPos = nullptr;
-GetCursorPos_t fpSetCursorPos = nullptr;
-GetAsyncKeyState_t fpGetAsyncKeyState = nullptr;
-GetKeyState_t fpGetKeyState = nullptr;
-ClipCursor_t fpClipCursor = nullptr;
-SetCursor_t fpSetCursor = nullptr;
-SetRect_t fpSetRect = nullptr;
-AdjustWindowRect_t fpAdjustWindowRect = nullptr;
-GetRawInputData_t fpGetRawInputData = nullptr;
-GetCursorInfo_t fpGetCursorInfo = nullptr;
-CreateWindowExA_t fpCreateWindowExA = nullptr;
-CreateWindowExW_t fpCreateWindowExW = nullptr;
-RegisterRawInputDevices_t fpRegisterRawInputDevices = nullptr;
+//GetKeyboardState_t fpGetKeyboardState = nullptr;
+//GetCursorPos_t fpGetCursorPos = nullptr;
+///GetCursorPos_t fpSetCursorPos = nullptr;
+//GetAsyncKeyState_t fpGetAsyncKeyState = nullptr;
+//GetKeyState_t fpGetKeyState = nullptr;
+//ClipCursor_t fpClipCursor = nullptr;
+//SetCursor_t fpSetCursor = nullptr;
+///SetRect_t fpSetRect = nullptr;
+//AdjustWindowRect_t fpAdjustWindowRect = nullptr;
+//GetRawInputData_t fpGetRawInputData = nullptr;
+//GetCursorInfo_t fpGetCursorInfo = nullptr;
+//CreateWindowExA_t fpCreateWindowExA = nullptr;
+//CreateWindowExW_t fpCreateWindowExW = nullptr;
+//RegisterRawInputDevices_t fpRegisterRawInputDevices = nullptr;
 
 
 
@@ -103,6 +126,7 @@ int showmessage = 0; //0 = no message, 1 = initializing, 2 = bmp mode, 3 = bmp a
 int showmessageW = 0; //0 = no message, 1 = initializing, 2 = bmp mode, 3 = bmp and cursor mode, 4 = edit mode 
 int counter = 0;
 bool scanrunning = false;
+bool keys[256] = { false };
 
 //syncronization control
 HANDLE hMutex;
@@ -126,6 +150,7 @@ int rawinputhook = 0;
 int GetCursorInfoHook = 0;
 int GetKeyboardStateHook = 0;
 bool registerrawinputhook = 0;
+int showcursorhook = 0;
 bool nodrawcursor = false;
 
 int ignorerect = 0;
@@ -286,6 +311,14 @@ bool olddown = false;
 bool oldleft = false;
 bool oldright = false;
 
+float radial_deadzone = 0.10f; // Circular/Radial Deadzone (0.0 to 0.3)
+float axial_deadzone = 0.00f; // Square/Axial Deadzone (0.0 to 0.3)
+const float max_threshold = 0.03f; // Max Input Threshold, an "outer deadzone" (0.0 to 0.15)
+const float curve_slope = 0.16f; // The linear portion of the response curve (0.0 to 1.0)
+const float curve_exponent = 5.00f; // The exponential portion of the curve (1.0 to 10.0)
+float sensitivity = 20.00f; // Base sensitivity / max speed (1.0 to 30.0)
+float accel_multiplier = 1.90f; // Look Acceleration Multiplier (1.0 to 3.0)
+
 bool musLB = false;
 bool musRB = false;
 bool rawmouseWu = false;
@@ -300,7 +333,7 @@ int startsearchC = 0;
 int startsearchD = 0;
 int startsearchE = 0;
 int startsearchF = 0;
-
+int skipintro = 0;
 int righthanded = 0;
 int scanoption = 0;
 
