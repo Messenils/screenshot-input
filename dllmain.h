@@ -31,10 +31,8 @@ HOOK_TRACE_INFO GETasynckeystate = { NULL };
 HOOK_TRACE_INFO GETkeystate = { NULL };
 HOOK_TRACE_INFO CLIPcursor = { NULL };
 HOOK_TRACE_INFO SETcursor = { NULL };
-HOOK_TRACE_INFO SHOWcursor = { NULL };
+HOOK_TRACE_INFO g_HookShowCursorHandle = { NULL };
 HOOK_TRACE_INFO GETcursorinfo = { NULL };
-HOOK_TRACE_INFO CREATEwindowexa = { NULL };
-HOOK_TRACE_INFO CREATEwindowexw = { NULL };
 
 HOOK_TRACE_INFO SETrect = { NULL };
 HOOK_TRACE_INFO ADJUSTwindowrect = { NULL };
@@ -46,76 +44,13 @@ HOOK_TRACE_INFO GETmessagea = { NULL };
 HOOK_TRACE_INFO GETmessagew = { NULL };
 HOOK_TRACE_INFO PEEKmessagea = { NULL };
 HOOK_TRACE_INFO PEEKmessagew = { NULL };
-
 HMODULE g_hModule = nullptr;
-
-//typedef BOOL(WINAPI* GetCursorPos_t)(LPPOINT lpPoint);
-//typedef BOOL(WINAPI* SetCursorPos_t)(int X, int Y); //GetKeyboardState
-
-//typedef SHORT(WINAPI* GetKeyboardState_t)(PBYTE lpKeyState);
-//typedef SHORT(WINAPI* GetAsyncKeyState_t)(int vKey);
-//typedef SHORT(WINAPI* GetKeyState_t)(int nVirtKey);
-//typedef BOOL(WINAPI* ClipCursor_t)(const RECT*);
-//typedef HCURSOR(WINAPI* SetCursor_t)(HCURSOR hCursor);
-
-//typedef BOOL(WINAPI* SetRect_t)(LPRECT lprc, int xLeft, int yTop, int xRight, int yBottom);
-//typedef BOOL(WINAPI* AdjustWindowRect_t)(LPRECT lprc, DWORD  dwStyle, BOOL bMenu);
-//typedef UINT(WINAPI* GetRawInputData_t)(HRAWINPUT hRawInput, UINT uiCommand, LPVOID pData, PUINT pcbSize, UINT cbSizeHeader);
-//typedef UINT(WINAPI* GetCursorInfo_t)(PCURSORINFO pci);
-//typedef HWND(WINAPI* CreateWindowExA_t)( DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
-//typedef HWND(WINAPI* CreateWindowExW_t)( DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int  nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam );
-
-//typedef BOOL(WINAPI* GetMessageA_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-//typedef BOOL(WINAPI* GetMessageW_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-//typedef BOOL(WINAPI* PeekMessageA_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
-//typedef BOOL(WINAPI* PeekMessageW_t)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
-
-//BOOL(WINAPI* fpGetMessageA)(LPMSG, HWND, UINT, UINT) = nullptr;
-//BOOL(WINAPI* fpGetMessageW)(LPMSG, HWND, UINT, UINT) = nullptr;
-//BOOL(WINAPI* fpPeekMessageA)(LPMSG, HWND, UINT, UINT, UINT) = nullptr;
-//BOOL(WINAPI* fpPeekMessageW)(LPMSG, HWND, UINT, UINT, UINT) = nullptr;
-
-//GetMessageA_t fpGetMessageA = nullptr;
-//GetMessageW_t fpGetMessageW = nullptr;
-//PeekMessageA_t fpPeekMessageA = nullptr;
-//PeekMessageW_t fpPeekMessageW = nullptr;
-
-//typedef BOOL(WINAPI* RegisterRawInputDevices_t)( PRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize);
-std::vector<HWND> g_windows;
-    
-// message filter hooks
-
-
-
 
 bool rawmouseL = false;
 bool rawmouseR = false;//0:scroll 1:left 2:right 3:up 4:down
-
 std::vector<BYTE> keyState(256, 0);
-
-
-
 CRITICAL_SECTION critical; //window thread
-//CRITICAL_SECTION criticalA; //Scannning thread
-//GetKeyboardState_t fpGetKeyboardState = nullptr;
-//GetCursorPos_t fpGetCursorPos = nullptr;
-///GetCursorPos_t fpSetCursorPos = nullptr;
-//GetAsyncKeyState_t fpGetAsyncKeyState = nullptr;
-//GetKeyState_t fpGetKeyState = nullptr;
-//ClipCursor_t fpClipCursor = nullptr;
-//SetCursor_t fpSetCursor = nullptr;
-///SetRect_t fpSetRect = nullptr;
-//AdjustWindowRect_t fpAdjustWindowRect = nullptr;
-//GetRawInputData_t fpGetRawInputData = nullptr;
-//GetCursorInfo_t fpGetCursorInfo = nullptr;
-//CreateWindowExA_t fpCreateWindowExA = nullptr;
-//CreateWindowExW_t fpCreateWindowExW = nullptr;
-//RegisterRawInputDevices_t fpRegisterRawInputDevices = nullptr;
 
-
-
-
-//POINT fakecursor;
 POINT fakecursorW;
 POINT startdrag;
 POINT activatewindow;
@@ -136,8 +71,10 @@ int message = 0;
 auto hInstance = nullptr;
 
 POINT delta;
-
+std::wstring windowtitle;
+int usefindwindow = 0;
 //hooks
+bool hooksenabled = false;
 bool hooksinited = false;
 int keystatesend = 0; //key to send
 int clipcursorhook = 0;
@@ -183,12 +120,6 @@ bool AuseStatic = 1;
 bool BuseStatic = 1;
 bool XuseStatic = 1;
 bool YuseStatic = 1;
-//int needatick = 0;
-//bool movedmouse = false;
-//std::vector<POINT> staticPointA;
-//std::vector<POINT> staticPointB;
-//std::vector<POINT> staticPointX;
-//std::vector<POINT> staticPointY;
 
 //fake cursor
 int controllerID = 0;
@@ -209,6 +140,7 @@ HICON hCursor = 0;
 DWORD lastClickTime;
 HDC PointerWnd;
 int WoldX, WoldY;
+
 //bmp search
 bool foundit = false;
 int hooksoninit = 0;
@@ -249,41 +181,6 @@ POINT oldrescheck;
 //scroll type 3
 int tick = 0;
 bool doscrollyes = false;
-
-// 
-//beautiful cursor
-int colorfulSword[20][20] = {
-{1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-{1,2,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-{1,2,2,2,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0},
-{1,2,2,2,2,2,2,1,1,0,0,0,0,0,0,0,0,0,0,0},
-{1,2,2,2,2,2,2,2,2,1,1,0,0,0,0,0,0,0,0,0},
-{1,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0,0,0,0,0},
-{1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0,0,0},
-{1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
-{1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,0,0},
-{1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0},
-{1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0,0,0},
-{1,2,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0},
-{1,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0,0},
-{1,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0,0},
-{1,2,2,2,2,2,2,1,1,2,2,2,1,0,0,0,0,0,0,0},
-{1,2,2,2,2,2,1,0,0,1,2,2,2,2,1,0,0,0,0,0},
-{1,2,2,2,2,1,0,0,0,0,1,2,2,2,1,0,0,0,0,0},
-{1,1,2,2,1,0,0,0,0,0,0,1,2,2,2,1,0,0,0,0},
-{1,2,2,1,0,0,0,0,0,0,0,1,2,2,2,1,0,0,0,0},
-{1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0},
-};
-//temporary cursor on success
-
-COLORREF colors[5] = {
-    RGB(0, 0, 0),          // Transparent - won't be drawn
-    RGB(140, 140, 140),    // Gray for blade
-    RGB(255, 255, 255),    // White shine
-    RGB(139, 69, 19),       // Brown handle
-    RGB(50, 150, 255)     // Light blue accent
-
-};
 
 bool onoroff = true;
 
@@ -350,8 +247,9 @@ POINT PointA;
 POINT PointB;  
 POINT PointX;
 POINT PointY;
+
 int scantick = 0;
-int findwindowdelay = 10;
+int findwindowdelay = 0;
 int bmpAtype = 0;
 int bmpBtype = 0;
 int bmpXtype = 0;

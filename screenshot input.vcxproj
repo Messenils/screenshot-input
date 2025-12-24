@@ -107,7 +107,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>$(MSBuildProjectDirectory)\include\EasyHook32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildProjectDirectory)\include\EasyHook32.lib;$(MSBuildProjectDirectory)\include\MinHook.x86.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -144,15 +144,17 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>$(MSBuildProjectDirectory)\include\MinHook.x64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildProjectDirectory)\include\EasyHook64.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="dllmain.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="logging.h" />
     <ClInclude Include="MessageFilterBase.h" />
     <ClInclude Include="MessageFilterHooks.h" />
     <ClInclude Include="MessageFilters.h" />
+    <ClInclude Include="MinHook.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

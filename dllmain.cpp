@@ -8,6 +8,7 @@
 #include <algorithm>
 //#include <windowsx.h>
 #include "EasyHook.h"
+#include "MinHook.h"
 #include <Xinput.h>
 #include <tlhelp32.h>
 #include <tchar.h>
@@ -21,6 +22,7 @@
 #include <thread>
 #include "MessageFilterHooks.h"
 #include "dllmain.h"
+#include "logging.h"
 #include "PostKeyFunction.cpp"
 #pragma comment(lib, "dwmapi.lib")
 
@@ -35,17 +37,21 @@ int scanAtype = 0;
 int scanBtype = 0;
 int scanXtype = 0;
 int scanYtype = 0;
-int showcursorcounter = 1;
-INT WINAPI HookedShowCursor(BOOL bShow) { //not called?
-    showcursorcounter = ShowCursor(bShow); // Call the original ShowCursor function
-   // showcursorcounter = 1;
-   // wchar_t buffer[64];
-   // swprintf(buffer, 64, L"ShowCursor counter = %d", showcursorcounter);
+bool showcursorcounter = true;
 
-  //  MessageBoxW(NULL, buffer, L"ShowCursorHooked", MB_OK);
+std::ofstream Log::LOG("dinput8.log");
 
-
-    return showcursorcounter;
+INT WINAPI HookedShowCursor(BOOL bShow) 
+{ //not called?
+    if (bShow)
+    {
+        showcursorcounter = true;
+    }
+    else
+    {
+        showcursorcounter = false;
+    }
+	return ShowCursor(bShow);
 }
 
 HCURSOR WINAPI HookedSetCursor(HCURSOR hcursor) {
@@ -200,6 +206,19 @@ UINT WINAPI HookedGetRawInputData(
     return result;
 }
 
+void ForceRawInputPoll() //global all processes
+{
+    INPUT input = { 0 };
+    input.type = INPUT_MOUSE;
+    input.mi.dx = 0;
+    input.mi.dy = 0;
+    input.mi.dwFlags = MOUSEEVENTF_MOVE; // relative move
+    SendInput(1, &input, sizeof(INPUT));
+    input.type = INPUT_KEYBOARD;
+    input.ki.wVk = VK_OEM_PERIOD;
+    input.ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(1, &input, sizeof(INPUT));
+}
 // Hooked GetKeyState
 SHORT WINAPI HookedGetKeyState(int nVirtKey) {
     if (keys[nVirtKey] == true) {
@@ -210,39 +229,6 @@ SHORT WINAPI HookedGetKeyState(int nVirtKey) {
     }
 }
 
-HWND WINAPI HookedCreateWindowExA( DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth,  int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
-{
-    // Call the original function
-    HWND hWnd = CreateWindowExA(
-        dwExStyle, lpClassName, lpWindowName, dwStyle,
-        X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
-
-    if (hWnd) {
-        g_windows.push_back(hWnd);
-        // Optional: debug output
-        // printf("Created window: %s, handle=%p\n", lpWindowName, hWnd);
-    }
-
-    return hWnd;
-}
-
-HWND WINAPI HookedCreateWindowExW(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
-{
-//    // Call the original function
-    HWND hWnd = CreateWindowExW(
-        dwExStyle, lpClassName, lpWindowName, dwStyle,
-                X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
-
-    if (hWnd) {
-       g_windows.push_back(hWnd);
-
-        // Optional: debug output
-        // wprintf(L"Created window: %s, handle=%p\n", lpWindowName, hWnd);
-    }
-
-    return hWnd;
-}
-bool inwindow = true;
 BOOL WINAPI MyGetCursorPos(PPOINT lpPoint) {
     if (lpPoint) 
     {
@@ -401,7 +387,6 @@ POINT GetStaticFactor(POINT pp, int doscale, bool isnotbmp)
     }
     return pp;
 }
-
 bool Mutexlock(bool lock) {
     // Create a named mutex
     if (lock == true)
@@ -443,163 +428,171 @@ BOOL WINAPI HookedRegisterRawInputDevices(PRAWINPUTDEVICE pRawInputDevices, UINT
     for (UINT i = 0; i < uiNumDevices; ++i) {
         pRawInputDevices[i].dwFlags |= RIDEV_INPUTSINK;
     }
-    if (pRawInputDevices[0].hwndTarget == NULL)
-        MessageBoxA(NULL, "RegisterRawInputDevices failed! Window is NULL", "Error", MB_OK | MB_ICONERROR);
     BOOL result = RegisterRawInputDevices(pRawInputDevices, uiNumDevices, cbSize);
   //  if (pRawInputDevices[0].hwndTarget != NULL) //if null follow keyboard focus
    //     hwnd = pRawInputDevices[0].hwndTarget;
-    if (result == FALSE)
-    {
-        MessageBoxA(NULL, "RegisterRawInputDevices failed!", "Error", MB_OK | MB_ICONERROR);
-	}
+   // if (result == FALSE)
+   // {
+   //     MessageBoxA(NULL, "RegisterRawInputDevices failed!", "Error", MB_OK | MB_ICONERROR);
+	//}
     return result;
 }
-void SetupHook() {
-  //  if (MH_Initialize() != MH_OK) {
-  //      MessageBox(NULL, "Failed to initialize MinHook", "Error", MB_OK | MB_ICONERROR);
-   //     return;
-  //  }
+void EnableHooks()
+{
+    if (getcursorposhook == 1 || getcursorposhook == 2) {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &GETcursorpos);
+    }
+    if (setcursorposhook == 1) {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &SETcursorpos);
+    }
+    if (getkeystatehook == 1) {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &GETkeystate);
+    }
+    if (getasynckeystatehook == 1) { ULONG ACLEntries[1] = { 0 }; LhSetExclusiveACL(ACLEntries, 1, &GETasynckeystate);
+    }
+    if (clipcursorhook == 1) { ULONG ACLEntries[1] = { 0 }; LhSetExclusiveACL(ACLEntries, 1, &CLIPcursor);
+    }
+    if (setrecthook == 1) {
+        ULONG ACLEntries[1] = { 0 }; 
+        LhSetExclusiveACL(ACLEntries, 1, &SETrect);
+        LhSetExclusiveACL(ACLEntries, 1, &ADJUSTwindowrect);
+    }
+    if (setcursorhook == 1)
+    {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &SETcursor);
+    }
+    if (rawinputhook == 1 || rawinputhook == 2)
+    {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &GETrawinputdata);
+    }
+    if (GetCursorInfoHook == 1)
+    {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &GETcursorinfo);
+	}
+    if (GetKeyboardStateHook == 1)
+    {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &GETkeyboardstate);
+    }
+    if (registerrawinputhook)
+    {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &REGISTERrawinputdevices);
+    }
+    if (g_filterRawInput || g_filterMouseMove || g_filterMouseActivate || g_filterWindowActivate
+        || g_filterWindowActivateApp || g_filterMouseWheel || g_filterMouseButton || g_filterKeyboardButton) // If one of them is enabled
+    {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &GETmessagea);
+        LhSetExclusiveACL(ACLEntries, 1, &GETmessagew);
+        LhSetExclusiveACL(ACLEntries, 1, &PEEKmessagea);
+        LhSetExclusiveACL(ACLEntries, 1, &PEEKmessagew);
+    }
+    if (showcursorhook == 1)
+    {
+        ULONG ACLEntries[1] = { 0 };
+        LhSetExclusiveACL(ACLEntries, 1, &g_HookShowCursorHandle);
+	}
+    hooksenabled = true;
+}
+void DisableHooks()
+{
+    ULONG ACLEntries[1] = { 0 };
+    LhSetGlobalExclusiveACL(ACLEntries, 0);
+    hooksenabled = false;
+    return;
+}
+
+void SetupHook() 
+{
+
+  //  Log() << "Loading " << path;
     HMODULE hUser32 = GetModuleHandleA("user32");
     if (!hUser32) {
         MessageBoxA(NULL, "FATAL: Could not get a handle to user32.dll! Hooks will not be installed.", "error", MB_OK);
         return;
     }
-    NTSTATUS result;
-    ULONG ACLEntries[1] = { 0 };
-    
-    //each of there hooks have a high chance of crashing the game
+    NTSTATUS result;   
 
     if (getcursorposhook == 1 || getcursorposhook == 2) {
-      //  MH_CreateHookApi(L"user32", "GetCursorPos", &MyGetCursorPos, reinterpret_cast<LPVOID*>(&fpGetCursorPos));
-      //  MH_EnableHook(&GetCursorPos);
         result = LhInstallHook(GetProcAddress(hUser32, "GetCursorPos"), MyGetCursorPos, NULL, &GETcursorpos);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install GetCursorPos hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &GETcursorpos);
-
     }
     if (setcursorposhook == 1) {
-      //  MH_CreateHook(&SetCursorPos, &MySetCursorPos, reinterpret_cast<LPVOID*>(&fpSetCursorPos));
-      //  MH_EnableHook(&SetCursorPos);
         result = LhInstallHook(GetProcAddress(hUser32, "SetCursorPos"), MySetCursorPos, NULL, &SETcursorpos);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install SetCursorPos hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &SETcursorpos);
     }
     if (getkeystatehook == 1) {
-      //  MH_CreateHook(&GetAsyncKeyState, &HookedGetAsyncKeyState, reinterpret_cast<LPVOID*>(&fpGetAsyncKeyState));
-      //  MH_EnableHook(&GetAsyncKeyState);
         result = LhInstallHook(GetProcAddress(hUser32, "GetKeyState"), HookedGetKeyState, NULL, &GETkeystate);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install GetKeyState hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &GETkeystate);
     }
     if (getasynckeystatehook == 1) {
-      //  MH_CreateHook(&GetKeyState, &HookedGetKeyState, reinterpret_cast<LPVOID*>(&fpGetKeyState));
-      //  MH_EnableHook(&GetKeyState);
         result = LhInstallHook(GetProcAddress(hUser32, "GetAsyncKeyState"), HookedGetAsyncKeyState, NULL, &GETasynckeystate);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install GetAsyncKeyState hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &GETasynckeystate);
     }
     if (clipcursorhook == 1) {
-      //  MH_CreateHook(&ClipCursor, &HookedClipCursor, reinterpret_cast<LPVOID*>(&fpClipCursor));
-      //  MH_EnableHook(&ClipCursor);
         result = LhInstallHook(GetProcAddress(hUser32, "ClipCursor"), HookedClipCursor, NULL, &CLIPcursor);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install ClipCursor hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &CLIPcursor);
     }
     if (setrecthook == 1) {
-      //  MH_CreateHook(&SetRect, &HookedSetRect, reinterpret_cast<LPVOID*>(&fpSetRect));
-      //  MH_EnableHook(&SetRect);
-
-      //  MH_CreateHook(&AdjustWindowRect, &HookedAdjustWindowRect, reinterpret_cast<LPVOID*>(&fpAdjustWindowRect));
-       // MH_EnableHook(&AdjustWindowRect);
         result = LhInstallHook(GetProcAddress(hUser32, "SetRect"), HookedSetRect, NULL, &SETrect);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install SetRect hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &SETrect);
         result = LhInstallHook(GetProcAddress(hUser32, "AdjustWindowRect"), HookedAdjustWindowRect, NULL, &ADJUSTwindowrect);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install AdjustWindowRect hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &ADJUSTwindowrect);
     }
     if (setcursorhook == 1)
     {
-      //  MH_CreateHook(&SetCursor, &HookedSetCursor, reinterpret_cast<LPVOID*>(&fpSetCursor));
-      //  MH_EnableHook(&SetCursor);
         result = LhInstallHook(GetProcAddress(hUser32, "SetCursor"), HookedSetCursor, NULL, &SETcursor);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install SetCursor hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &SETcursor);
     }
     if (rawinputhook == 1 || rawinputhook == 2)
     {
-       // MH_CreateHook(&GetRawInputData, &HookedGetRawInputData,reinterpret_cast<LPVOID*>(&fpGetRawInputData));
-       // MH_EnableHook(&GetRawInputData);
         result = LhInstallHook(GetProcAddress(hUser32, "GetRawInputData"), HookedGetRawInputData, NULL, &GETrawinputdata);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install GetRawInputData hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &GETrawinputdata);
     }
     if (GetCursorInfoHook == 1)
     {
-      //  MH_CreateHook(&GetCursorInfo, &HookedGetCursorInfo, reinterpret_cast<LPVOID*>(&fpGetCursorInfo));
-      //  MH_EnableHook(&GetCursorInfo);
         result = LhInstallHook(GetProcAddress(hUser32, "GetCursorInfo"), HookedGetCursorInfo, NULL, &GETcursorinfo);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install GetCursorInfo hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &GETcursorinfo);
     }
     if (GetKeyboardStateHook == 1)
     {
-       // MH_CreateHook(&GetKeyboardState, &HookedGetKeyboardState, reinterpret_cast<LPVOID*>(&fpGetKeyboardState));
-      //  MH_EnableHook(&GetKeyboardState);
         result = LhInstallHook(GetProcAddress(hUser32, "GetKeyboardState"), HookedGetKeyboardState, NULL, &GETkeyboardstate);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install GetKeyboardState hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &GETkeyboardstate);
     }
-    result = LhInstallHook(GetProcAddress(hUser32, "ShowCursor"), HookedShowCursor, NULL, &SHOWcursor);
-    if (FAILED(result)) MessageBoxA(NULL, "Failed to install ShowCursor hook", "Error", MB_OK | MB_ICONERROR);
-    LhSetInclusiveACL(ACLEntries, 1, &SHOWcursor);
-    // this was to try to gather all created windows in an array for postmessage. not seen it effective yet
-  //  MH_CreateHook(&CreateWindowExA, &HookedCreateWindowExA, reinterpret_cast<LPVOID*>(&fpCreateWindowExA));
-  //  MH_EnableHook(&CreateWindowExA);
-  ///  MH_CreateHook(&CreateWindowExW, &HookedCreateWindowExW, reinterpret_cast<LPVOID*>(&fpCreateWindowExW));
-  //  MH_EnableHook(&CreateWindowExW);
 
     if (registerrawinputhook)
     { 
-      //  MH_CreateHook(&RegisterRawInputDevices, &HookedRegisterRawInputDevices, reinterpret_cast<LPVOID*>(&fpRegisterRawInputDevices));
-      //  MH_EnableHook(&RegisterRawInputDevices);
         result = LhInstallHook(GetProcAddress(hUser32, "RegisterRawInputDevices"), HookedRegisterRawInputDevices, NULL, &REGISTERrawinputdevices);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install RegisterRawInputDevices hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &REGISTERrawinputdevices);
     }
     if (g_filterRawInput || g_filterMouseMove || g_filterMouseActivate || g_filterWindowActivate
-        || g_filterWindowActivateApp || g_filterMouseWheel || g_filterMouseButton || g_filterKeyboardButton) // If one of them is enabled
-    { // MessageFilter hooks
-        // FIX: Add "MessageFilterHook::" before the function names
-      //  MH_CreateHook(&GetMessageA, &ScreenshotInput::MessageFilterHook::Hook_GetMessageA, reinterpret_cast<LPVOID*>(&fpGetMessageA));
-      //  MH_EnableHook(&GetMessageA);
-      //  MH_CreateHook(&GetMessageW, &ScreenshotInput::MessageFilterHook::Hook_GetMessageW, reinterpret_cast<LPVOID*>(&fpGetMessageW));
-      //  MH_EnableHook(&GetMessageW);
-      //  MH_CreateHook(&PeekMessageA, &ScreenshotInput::MessageFilterHook::Hook_PeekMessageA, reinterpret_cast<LPVOID*>(&fpPeekMessageA));
-      //  MH_EnableHook(&PeekMessageA);
-      //  MH_CreateHook(&PeekMessageW, &ScreenshotInput::MessageFilterHook::Hook_PeekMessageW, reinterpret_cast<LPVOID*>(&fpPeekMessageW));
-      //  MH_EnableHook(&PeekMessageW);
+        || g_filterWindowActivateApp ||  g_filterMouseWheel || g_filterMouseButton || g_filterKeyboardButton) // If one of them is enabled
+    { 
         result = LhInstallHook(GetProcAddress(hUser32, "GetMessageA"), ScreenshotInput::MessageFilterHook::Hook_GetMessageA, NULL, &GETmessagea);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install GetMessageA hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &GETmessagea);
         result = LhInstallHook(GetProcAddress(hUser32, "GetMessageW"), ScreenshotInput::MessageFilterHook::Hook_GetMessageW, NULL, &GETmessagew);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install GetMessageW hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &GETmessagew);
         result = LhInstallHook(GetProcAddress(hUser32, "PeekMessageA"), ScreenshotInput::MessageFilterHook::Hook_PeekMessageA, NULL, &PEEKmessagea);
         if (FAILED(result)) MessageBoxA(NULL, "Failed to install PeekMessageA hook", "Error", MB_OK | MB_ICONERROR);
-        LhSetInclusiveACL(ACLEntries, 1, &PEEKmessagea);
         result = LhInstallHook(GetProcAddress(hUser32, "PeekMessageW"), ScreenshotInput::MessageFilterHook::Hook_PeekMessageW, NULL, &PEEKmessagew);
-        LhSetInclusiveACL(ACLEntries, 1, &PEEKmessagew);
         if (FAILED(result)) MessageBoxA( NULL, "Failed to install PeekMessageW hook", "Error", MB_OK | MB_ICONERROR);
     }
-   // if (showcursorhook == 1)
-  //  { 
-
-  //  }
-
-    //MessageBox(NULL, "hooks done", "okay", MB_OK | MB_ICONINFORMATION);
+    if (showcursorhook == 1)
+    {
+        result = LhInstallHook(GetProcAddress(hUser32, "ShowCursor"), HookedShowCursor, NULL, &g_HookShowCursorHandle);
+        if (FAILED(result)) MessageBoxA(NULL, "Failed to install ShowCursor hook", "Error", MB_OK | MB_ICONERROR);
+	}
     hooksinited = true;
+    
     //MH_EnableHook(MH_ALL_HOOKS);
+    return;
 }
 
 
@@ -856,7 +849,21 @@ BOOL IsMainWindow(HWND handle)
 {
     // Is top level & visible & not one of ours
     if (GetWindow(handle, GW_OWNER) == nullptr && IsWindowVisible(handle) && handle != pointerWindow)
+    {
+        wchar_t title[256] = { 0 };
+        GetWindowTextW(handle, title, 256);
+
+        wchar_t lower[256];
+        wcscpy_s(lower, title);      // copy original
+        _wcslwr_s(lower);            // lowercase the copy
+
+        if (windowtitle.length() > 1)
+        {
+            if (wcsstr(lower, windowtitle.c_str()) == nullptr)
+                return FALSE;
+		}
         return TRUE;
+    }
     else return FALSE;
 }
 
@@ -874,22 +881,51 @@ BOOL CALLBACK EnumWindowsCallback(HWND handle, LPARAM lParam)
 
     return FALSE;
 }
-
+int tries = 0;
 void UpdateMainHwnd(bool logOutput)
 {
     // Go through all the top level windows, select the first that's visible & belongs to the process
-
     HandleData data{ GetCurrentProcessId(), nullptr };
-    EnumWindows(EnumWindowsCallback, (LPARAM)&data);
-
-    const auto hwndd = (intptr_t)data.hwnd;
-
-    if (logOutput)
+    if (usefindwindow == 0)
     {
-        if (hwndd == 0)
-			MessageBoxA(NULL, "UpdateMainHwnd did not find a valid hwnd!", "Error", MB_OK | MB_ICONERROR);
-    }
+        EnumWindows(EnumWindowsCallback, (LPARAM)&data);
 
+        const auto hwndd = (intptr_t)data.hwnd;
+
+        if (logOutput)
+        {
+            if (hwndd == 0)
+                MessageBoxA(NULL, "UpdateMainHwnd did not find a valid hwnd!", "Error", MB_OK | MB_ICONERROR);
+        }
+    }
+    else 
+    { 
+        data.hwnd = NULL;
+        while (data.hwnd == NULL)
+        {
+            Sleep(500);
+
+            HWND h = FindWindowW(NULL, windowtitle.c_str());
+
+            if (h != NULL &&
+                GetWindow(h, GW_OWNER) == nullptr &&
+                IsWindowVisible(h) &&
+                h != pointerWindow)
+            {
+                data.hwnd = h;   // <-- VALID WINDOW FOUND
+                break;           // <-- EXIT LOOP
+            }
+
+            if (++tries >= 20)
+            {
+                MessageBoxA(NULL, "FindWindow failed to find the window!", "Error", MB_OK | MB_ICONERROR);
+                break;           // <-- STOP LOOP
+            }
+        }
+
+        tries = 0;
+
+    }
     if (data.hwnd != nullptr)
         hwnd = data.hwnd;
 }
@@ -1181,20 +1217,8 @@ void DrawToHDC(HDC hdcWindow, int X, int Y, int showmessage)
         DrawBlueCircle(hdcWindow, rect.right - moveV - 20, 20 + moveV);
         DrawRedX(hdcWindow, 20 + moveV, rect.bottom - moveV - 20);
 
-        for (int y = 0; y < 20; y++)
-        {
-            for (int x = 0; x < 20; x++)
-            {
-                int val = colorfulSword[y][x];
-                if (val != 0)
-                {
-                    HBRUSH hBrush = CreateSolidBrush(colors[val]);
-                    RECT rect = { X + x , Y + y , X + x + 1, Y + y + 1 };
-                    FillRect(hdcWindow, &rect, hBrush);
-                    DeleteObject(hBrush);
-                }
-            }
-        }
+        HCURSOR cursor = LoadCursor(NULL, IDC_ARROW);
+        DrawIcon(hdcWindow, X - Xoffset, Y - Yoffset, cursor);
 
         if (moveV < rect.bottom - 20 && moveV < rect.right - 20 && moveV >= 0)
         { 
@@ -1249,20 +1273,8 @@ void DrawToHDC(HDC hdcWindow, int X, int Y, int showmessage)
         staticpoint = GetStaticFactor({ X, Y }, 3, true);
         TextOut(hdcWindow, staticpoint.x, staticpoint.y, TEXT("3"), 1);
 
-        for (int y = 0; y < 20; y++)
-        {
-            for (int x = 0; x < 20; x++)
-            {
-                int val = colorfulSword[y][x];
-                if (val != 0)
-                {
-                    HBRUSH hBrush = CreateSolidBrush(colors[val]);
-                    RECT rect = { X + x , Y + y , X + x + 1, Y + y + 1 };
-                    FillRect(hdcWindow, &rect, hBrush);
-                    DeleteObject(hBrush);
-                }
-            }
-        }
+        HCURSOR cursor = LoadCursor(NULL, IDC_ARROW);
+        DrawIcon(hdcWindow, X - Xoffset, Y - Yoffset, cursor);
     }
     else if (showmessage == 10)
     {
@@ -1288,7 +1300,7 @@ void DrawToHDC(HDC hdcWindow, int X, int Y, int showmessage)
     {
         TextOut(hdcWindow, X, Y, TEXT("WINDOW?"), 7);
     }
-    if (nodrawcursor == false && showcursorcounter > 0) // is 1
+    if (nodrawcursor == false && showcursorcounter == true) // is 1
     { 
         if (hCursor != 0 && onoroff == true)
         {
@@ -1301,20 +1313,6 @@ void DrawToHDC(HDC hdcWindow, int X, int Y, int showmessage)
         }
         else if (onoroff == true && (alwaysdrawcursor == 1 || gotcursoryet == false))
         {
-           // for (int y = 0; y < 20; y++)
-           // {
-            //    for (int x = 0; x < 20; x++)
-            //    {
-            //        int val = colorfulSword[y][x];
-             //       if (val != 0)
-            //        {
-             //           HBRUSH hBrush = CreateSolidBrush(colors[val]);
-             //           RECT rect = { X + x , Y + y , X + x + 1, Y + y + 1 };
-             //           FillRect(hdcWindow, &rect, hBrush);
-             //           DeleteObject(hBrush);
-             //       }
-             //   }
-           // }
             HCURSOR cursor = LoadCursor(NULL, IDC_ARROW);
             DrawIcon(hdcWindow, X - Xoffset, Y - Yoffset, cursor);
         }
@@ -2239,7 +2237,6 @@ LRESULT CALLBACK FakeCursorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
     return DefWindowProc(hWnd, msg, wParam, lParam);
 }
-
 bool scanloop = false;
 DWORD WINAPI ScanThread(LPVOID, int Aisstatic, int Bisstatic, int Xisstatic, int Yisstatic) 
 {
@@ -3182,6 +3179,10 @@ bool enumeratebmps()
             
         return true;
 }
+std::wstring ToWString(const std::string& s)
+{
+    return std::wstring(s.begin(), s.end());
+}
 bool readsettings(){
     char buffer[16]; //or only 4 maybe
 
@@ -3244,6 +3245,16 @@ bool readsettings(){
     XuseStatic = GetPrivateProfileInt(iniSettings.c_str(), "ScanXstatic", 0, iniPath.c_str());
     YuseStatic = GetPrivateProfileInt(iniSettings.c_str(), "ScanYstatic", 0, iniPath.c_str());
     skipintro = GetPrivateProfileInt(iniSettings.c_str(), "SkipIntro", 0, iniPath.c_str());
+
+
+    std::wstring iniPathW = ToWString(iniPath);
+    std::wstring iniSettingsW = ToWString(iniSettings);
+    wchar_t buffers[256] = { 0 };
+    GetPrivateProfileStringW(iniSettingsW.c_str(), L"WindowTitle",L"1",buffers,256,iniPathW.c_str());
+    windowtitle = buffers;
+    usefindwindow = GetPrivateProfileInt(iniSettings.c_str(), "UseFindWindow", 0, iniPath.c_str());
+
+
     //setting bmp search type like flag values
     if (Atype > 1999)
     {
@@ -3402,17 +3413,18 @@ bool readsettings(){
 }   
 void ThreadFunction(HMODULE hModule)
 {
+    if (hooksoninit == 1) //if 2 then just after window found
+    {
+        SetupHook();
+        EnableHooks();
+    }
     Sleep(2000);
-
     if (readsettings() == false)
     {
         //messagebox? settings not read
     }
-    //Sleep(findwindowdelay * 1000);
-    
-   
-    //hwnd = GetMainWindowHandle(GetCurrentProcessId());
-  //  if (registerrawinputhook == 0) //hwnd handle may be received there. but may be NULL also
+    if (findwindowdelay > 0)
+		Sleep(findwindowdelay * 1000); //delaying windowsearch
     UpdateMainHwnd(true);
     RECT rect;
     bool Aprev = false;
@@ -3441,8 +3453,6 @@ void ThreadFunction(HMODULE hModule)
         if (hwnd == nullptr)
         {
 			Sleep(1000); //no enumeration spamming
-           // hwnd = GetMainWindowHandle(GetCurrentProcessId());
-//  if (registerrawinputhook == 0) //hwnd handle may be received there
             UpdateMainHwnd(false);
             showmessage = 99; //back to intro
             counter = 0;
@@ -3455,13 +3465,7 @@ void ThreadFunction(HMODULE hModule)
         }
         
         else
-		{ // maybe inject hooks here instead. also getcursorpos first, and set Xf Yf to pos to let Xf and Yf countinue where real cursor pos left off
-            //POINT screenpos = getcursorpos(&pos)  get window pos: POINT windowpos = windowpos( hwnd, ignorerect, true) width: POINT Windowres = windowpos( hwnd, ignorerect, false)
-            //if in bounds: if (screenpos.x > windowpos.x && screenpos.y > windowpos.y && screenpos.x < windowpos.x + windowres.x && screenpos.y < windowpos.y + windowres.y) //then in bounds
-                //Xf = screenpos.x - windowpos.x; Yf = screenpos.y - windowpos.y; //set fake cursor to real cursor pos. looks correct
-
-            //postmessage WM_Mousehover Xf Yf on standard values if real was outside window? is that opposite message of WM_Mouseleave?
-           // UpdateMainHwnd(true); //hwnd check?
+		{ 
             retrynum = 0;
 			gotwindow = true;
             if (!IsMainWindow(hwnd)) 
@@ -3473,7 +3477,8 @@ void ThreadFunction(HMODULE hModule)
                 {
                     if (gotwindow && hooksinited)
                     { 
-                      //  MH_DisableHook(MH_ALL_HOOKS);
+                        if (hooksenabled)
+                            DisableHooks();
 					    gotwindow = false;
                     }
                     retrynum ++;
@@ -3513,10 +3518,13 @@ void ThreadFunction(HMODULE hModule)
             if (hooksoninit == 2 && hooksinited == false)
             {
                 SetupHook();
+                if (!hooksenabled)
+                    EnableHooks();
             }
 			if (gotwindow == false && hooksinited) //rehook after lost window
             {
-              //  MH_EnableHook(MH_ALL_HOOKS);
+                if (!hooksenabled)
+                    EnableHooks();
                 gotwindow = true;
             }
 
@@ -3986,7 +3994,11 @@ void ThreadFunction(HMODULE hModule)
                         //save coordinates
                         //start
                         if (hooksinited == false)
+                        { 
                             SetupHook();
+                            if (!hooksenabled)
+                                EnableHooks();
+                        }
                         startdrag.x = Xf;
                         startdrag.y = Yf;
                         rightPressedold = true;
@@ -4071,11 +4083,13 @@ void ThreadFunction(HMODULE hModule)
                 }
                 if (showmessage == 69) { //disabling dll
                     onoroff = false;
-                  //  MH_DisableHook(MH_ALL_HOOKS);
+                    if (hooksenabled)
+                        DisableHooks();
                 }
                 if (showmessage == 70) { //enabling dll
                     onoroff = true;
-                  //  MH_EnableHook(MH_ALL_HOOKS);
+                    if (!hooksenabled)
+                        EnableHooks();
                 }
                 if (mode != 3)
                     showmessage = 0;
@@ -4087,19 +4101,9 @@ void ThreadFunction(HMODULE hModule)
       //  }
 		if (rawinputhook == 1) //to make game poll rawinput
         { 
-            INPUT input = { 0 }; 
-            input.type = INPUT_MOUSE;
-            input.mi.dx = 0;
-            input.mi.dy = 0;
-            input.mi.dwFlags = MOUSEEVENTF_MOVE; // relative move
-            SendInput(1, &input, sizeof(INPUT));
-            input.type = INPUT_KEYBOARD;
-            input.ki.wVk = VK_OEM_PERIOD;
-            input.ki.dwFlags = KEYEVENTF_KEYUP;
-            SendInput(1, &input, sizeof(INPUT));
+            ForceRawInputPoll(); //global all processes
         }
-       // if (showcursorcounter > -1 && showcursorhook == 1)
-        //    showcursorcounter--;
+       // showcursorcounter = IsCursorVisible();
         if (tick < scrollenddelay)
             tick++;
         
@@ -4112,10 +4116,6 @@ void ThreadFunction(HMODULE hModule)
             Sleep(18); //30 fps?
     } //loop end but endless
     return;
-}
-void RemoveHook() {
-  //  MH_DisableHook(MH_ALL_HOOKS);
-    //MH_Uninitialize();
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) 
@@ -4157,12 +4157,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             g_filterMouseButton = GetPrivateProfileInt(iniSettings.c_str(), "MouseButtonFilter", 0, iniPath.c_str());
             g_filterKeyboardButton = GetPrivateProfileInt(iniSettings.c_str(), "KeyboardButtonFilter", 0, iniPath.c_str());
 
+            //delays
+            findwindowdelay = GetPrivateProfileInt(iniSettings.c_str(), "DelayWindowSearch", 0, iniPath.c_str());
+
             //hook at once or wait for input
             hooksoninit = GetPrivateProfileInt(iniSettings.c_str(), "hooksoninit", 1, iniPath.c_str());
-			if (hooksoninit == 1) //if 2 then just after window found
-            {
-                SetupHook();
-		    }
+
            InitializeCriticalSection(&critical);
            std::thread one (ThreadFunction, g_hModule);
            one.detach();
@@ -4172,7 +4172,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         case DLL_PROCESS_DETACH:
         {
             DeleteCriticalSection(&critical);
-            RemoveHook();
+            DisableHooks();
+			scanloop = false; //stop scan thread
+			PostMessage(pointerWindow, WM_CLOSE, 0, 0); //stop window thread
             exit(0);
             break;
         }
