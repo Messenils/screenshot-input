@@ -58,6 +58,9 @@
     <ClCompile Include="SDL2_gamecontrollerdb.cpp">
       <Filter>Files\Gamepad</Filter>
     </ClCompile>
+    <ClCompile Include="ScanThread.cpp">
+      <Filter>Files\ScanThread</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -134,6 +137,9 @@
     <ClInclude Include="SDL2_gamecontrollerdb.h">
       <Filter>Files\Gamepad</Filter>
     </ClInclude>
+    <ClInclude Include="ScanThread.h">
+      <Filter>Files\ScanThread</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Files">
@@ -156,6 +162,9 @@
     </Filter>
     <Filter Include="Files\Gamepad">
       <UniqueIdentifier>{5c5b6fd9-923a-45d5-a597-a7b08d260770}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Files\ScanThread">
+      <UniqueIdentifier>{771db972-0278-4a04-bbec-5cf5ea6511a5}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

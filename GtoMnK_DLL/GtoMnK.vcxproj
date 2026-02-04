@@ -368,11 +368,13 @@ robocopy "$(ProjectDir)Documents" "$(SolutionDir)$(Configuration)\Config"</Comma
     <ClInclude Include="Mouse.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="RawInput.h" />
+    <ClInclude Include="ScanThread.h" />
     <ClInclude Include="SDL2_gamecontrollerdb.h" />
     <ClInclude Include="SDL2_Gamepad.h" />
     <ClInclude Include="XInput_Gamepad.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="ScanThread.cpp" />
     <ClCompile Include="SDL2_gamecontrollerdb.cpp" />
     <ClCompile Include="SDL2_Gamepad.cpp" />
     <ClCompile Include="XInput_Gamepad.cpp" />

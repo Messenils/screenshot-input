@@ -1,5 +1,6 @@
 #pragma once
 #include "InputState.h"
+#include <vector>
 
 namespace GtoMnK {
 
@@ -11,7 +12,7 @@ namespace GtoMnK {
     namespace Input {
 
         void SendAction(const std::string& actionString, bool press);
-        void SendAction(int screenX, int screenY);
+        void SendMouseMove(int screenX, int screenY);
         void SendActionDelta(int deltaX, int deltaY);
 
         std::vector<Action> ParseActionString(const std::string& fullString);

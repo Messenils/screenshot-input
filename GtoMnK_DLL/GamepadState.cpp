@@ -3,6 +3,7 @@
 #include "INISettings.h"
 #include "InputState.h"
 #include "Input.h"
+#include "ScanThread.h"
 
 // For Controller Button States
 const size_t NO_ACTION = static_cast<size_t>(-1);
@@ -95,13 +96,14 @@ void ProcessButton(UINT buttonFlag, bool isCurrentlyPressed) {
         bs.activeActionIndex = NO_ACTION;
         bs.pressActionFired = false;
         bs.heldActionString = "0";
-
+        bool found = ScanThread::ButtonPressed(buttonFlag);
         if (!bs.actions.empty() && bs.actions[0].holdDurationMs == 0) {
             bs.activeActionIndex = 0;
             const Action& tapAction = bs.actions[0];
 
             if (!tapAction.onRelease) {
-                Input::SendAction(tapAction.actionString, true);
+                if (!found)
+                    Input::SendAction(tapAction.actionString, true);
                 bs.heldActionString = tapAction.actionString;
                 bs.pressActionFired = true;
             }

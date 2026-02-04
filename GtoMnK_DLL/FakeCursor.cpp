@@ -8,10 +8,11 @@ And is modified for GtoMnK usage. All credits to the original author.
 #include "Mouse.h"
 #include "MainThread.h"
 #include "Logging.h"
+#include "ScanThread.h"
 
 extern int drawProtoFakeCursor;
 extern int createdWindowIsOwned;
-
+POINT OldspotA, OldspotB, OldspotX, OldspotY;
 namespace GtoMnK
 {
 
@@ -63,6 +64,114 @@ namespace GtoMnK
         }
     }
     
+    void DrawRedX(HDC hdc, int x, int y) //blue
+    {
+        HPEN hPen = CreatePen(PS_SOLID, 3, RGB(0, 0, 255));
+        HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
+
+        MoveToEx(hdc, x - 15, y - 15, NULL);
+        LineTo(hdc, x + 15, y + 15);
+
+        MoveToEx(hdc, x + 15, y - 15, NULL);
+        LineTo(hdc, x - 15, y + 15);
+
+        SelectObject(hdc, hOldPen);
+        DeleteObject(hPen);
+        return;
+    }
+    void DrawBlueCircle(HDC hdc, int x, int y) //red
+    {
+        // Create a NULL brush (hollow fill)
+        HBRUSH hBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+        HBRUSH hOldBrush = (HBRUSH)SelectObject(hdc, hBrush);
+
+        HPEN hPen = CreatePen(PS_SOLID, 3, RGB(255, 0, 0));
+        HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
+
+        Ellipse(hdc, x - 15, y - 15, x + 15, y + 15);
+
+        SelectObject(hdc, hOldBrush);
+        SelectObject(hdc, hOldPen);
+        DeleteObject(hPen);
+    }
+    void DrawGreenTriangle(HDC hdc, int x, int y)
+    {
+        // Use a NULL brush for hollow
+        HBRUSH hBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+        HBRUSH hOldBrush = (HBRUSH)SelectObject(hdc, hBrush);
+
+        HPEN hPen = CreatePen(PS_SOLID, 3, RGB(0, 255, 0));
+        HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
+
+        POINT pts[3];
+        pts[0].x = x; pts[0].y = y - 10;        // top center
+        pts[1].x = x - 10; pts[1].y = y + 10;   // bottom left
+        pts[2].x = x + 10; pts[2].y = y + 10;   // bottom right
+
+        Polygon(hdc, pts, 3);
+
+        SelectObject(hdc, hOldBrush);
+        SelectObject(hdc, hOldPen);
+        DeleteObject(hPen);
+    }
+
+    void DrawPinkSquare(HDC hdc, int x, int y)
+    {
+        // Create a NULL brush (hollow fill)
+        HBRUSH hBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+        HBRUSH hOldBrush = (HBRUSH)SelectObject(hdc, hBrush);
+
+        HPEN hPen = CreatePen(PS_SOLID, 3, RGB(255, 192, 203));
+        HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
+
+        // Draw hollow rectangle (square) 20x20
+        Rectangle(hdc, x - 15, y - 15, x + 15, y + 15);
+
+        SelectObject(hdc, hOldBrush);
+        SelectObject(hdc, hOldPen);
+        DeleteObject(hPen);
+    }
+    void DrawFoundSpots(HDC hdc, POINT spotA, POINT spotB, POINT spotX, POINT spotY, HBRUSH Brush)
+    {
+		bool erased = false;
+        if (OldspotA.x != spotA.x || OldspotA.y != spotA.y)
+        {
+            RECT fill{ OldspotA.x - 20, OldspotA.y - 20, OldspotA.x + 20, OldspotA.y + 20 };
+            FillRect(hdc, &fill, Brush); // Note: window, not screen coordinates!
+			erased = true;
+        }
+        if (OldspotB.x != spotB.x || OldspotB.y != spotB.y)
+        {
+            RECT fill{ OldspotB.x - 20, OldspotB.y - 20, OldspotB.x + 20, OldspotB.y + 20 };
+            FillRect(hdc, &fill, Brush); // Note: window, not screen coordinates!
+            erased = true;
+        }
+        if (OldspotX.x != spotX.x || OldspotX.y != spotX.y)
+        {
+            RECT fill{ OldspotX.x - 20, OldspotX.y - 20, OldspotX.x + 20, OldspotX.y + 20 };
+            FillRect(hdc, &fill, Brush); // Note: window, not screen coordinates!
+            erased = true;
+        }
+        if (OldspotY.x != spotY.x || OldspotY.y != spotY.y)
+        {
+            RECT fill{ OldspotY.x - 20, OldspotY.y - 20, OldspotY.x + 20, OldspotY.y + 20 };
+            FillRect(hdc, &fill, Brush); // Note: window, not screen coordinates!
+            erased = true;
+        }
+        if (spotA.x != 0 && spotA.y != 0 && erased == true)
+            DrawRedX(hdc, spotA.x, spotA.y);
+        if (spotB.x != 0 && spotB.y != 0 && erased == true)
+            DrawBlueCircle(hdc, spotB.x, spotB.y);
+        if (spotX.x != 0 && spotX.y != 0 && erased == true)
+            DrawGreenTriangle(hdc, spotX.x, spotX.y);
+        if (spotY.x != 0 && spotY.y != 0 && erased == true)
+            DrawPinkSquare(hdc, spotA.x, spotA.y);
+
+        OldspotA = spotA;
+        OldspotB = spotB;
+        OldspotX = spotX;
+        OldspotY = spotY;
+    }
     void FakeCursor::DrawCursor()
     {
 
@@ -72,7 +181,18 @@ namespace GtoMnK
             FillRect(hdc, &fill, transparencyBrush); // Note: window, not screen coordinates!
 
         }
+        if (ScanThread::scanoption == 1)
+        {
+            
+            EnterCriticalSection(&GtoMnK::ScanThread::critical);
+            POINT Apos = { ScanThread::PointA.x, ScanThread::PointA.y };
+            POINT Bpos = { ScanThread::PointB.x, ScanThread::PointB.y };
+            POINT Xpos = { ScanThread::PointX.x, ScanThread::PointX.y };
+            POINT Ypos = { ScanThread::PointY.x, ScanThread::PointY.y };
+            LeaveCriticalSection(&GtoMnK::ScanThread::critical);
 
+            DrawFoundSpots(hdc, Apos, Bpos, Xpos, Ypos, transparencyBrush);
+        }
         oldHadShowCursor = showCursor;
 
 		// Origanally from PrtotInput and modified for GtoMnK

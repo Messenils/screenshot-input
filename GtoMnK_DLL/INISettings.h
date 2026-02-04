@@ -87,4 +87,7 @@ extern float stick_as_button_deadzone;
 extern float g_TriggerThreshold;
 extern std::map<UINT, ButtonState> buttonStates;
 
+//scanning options
+
+
 void LoadIniSettings();

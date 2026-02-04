@@ -411,7 +411,7 @@ namespace GtoMnK {
         }
 
 		// For PostMessage method
-        void SendAction(int screenX, int screenY) {
+        void SendMouseMove(int screenX, int screenY) {
             if (g_InputMethod != InputMethod::PostMessage) return;
             if (!hwnd) return;
             WPARAM wParam = BuildWParam();

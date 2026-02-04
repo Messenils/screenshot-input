@@ -30,3 +30,10 @@ extern bool g_EnableMouseDoubleClick;
 
 extern HWND GetMainWindowHandle(DWORD targetPID, const char* requiredName = nullptr, const char* requiredClass = nullptr, DWORD timeoutMS = 0);
 DWORD WINAPI ThreadFunction(LPVOID lpParam);
+namespace GtoMnK {
+    class MainThread {
+    //private:
+    public:
+        static int showmessage;
+    };
+}

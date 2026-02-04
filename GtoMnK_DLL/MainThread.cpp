@@ -14,6 +14,8 @@
 #include "GamepadState.h"
 #include "Xinput_Gamepad.h"
 #include "SDL2_Gamepad.h"
+#include "ScanThread.h"
+#include <thread>
 
 using namespace GtoMnK;
 
@@ -31,13 +33,12 @@ HANDLE hMutex = nullptr;
 
 // Drawing & cursor state
 bool onoroff = true;
-int showmessage = 0;
+int MainThread::showmessage;
 int counter = 0;
 bool pausedraw = false;
-
 // For SetRectHook and AdjustWindowRectHook
 int leftrect, toprect, rightrect, bottomrect;
-
+//CRITICAL_SECTION GtoMnK::ScanThread::critical;
 // General
 //bool gotcursoryet = false;
 //POINT startdrag = { 0, 0 };
@@ -55,29 +56,31 @@ int leftrect, toprect, rightrect, bottomrect;
 //POINT rectignore = { 0, 0 };
 //int ignorerect;
 
+int AuseStatic, BuseStatic, XuseStatic, YuseStatic;
 
 void DrawOverlay() {
-    if (showmessage == 0 && !(drawfakecursor && mode == 1 && onoroff)) {
+    if (MainThread::showmessage == 0 && !(drawfakecursor && mode == 1 && onoroff)) {
         return;
     }
     HDC hdcWindow = GetDC(hwnd);
     if (!hdcWindow) {
         return;
     }
-    if (showmessage == 1) TextOutA(hdcWindow, Mouse::Xf, Mouse::Yf, "KEYBOARD MODE", 13);
-    else if (showmessage == 2) TextOutA(hdcWindow, Mouse::Xf, Mouse::Yf, "CURSOR MODE", 11);
-    else if (showmessage == 69) TextOutA(hdcWindow, Mouse::Xf, Mouse::Yf, "DISABLED", 8);
-    else if (showmessage == 70) TextOutA(hdcWindow, Mouse::Xf, Mouse::Yf, "ENABLED", 7);
-    else if (showmessage == 12) TextOutA(hdcWindow, 20, 20, "CONTROLLER DISCONNECTED", 23);
+    if (MainThread::showmessage == 1) TextOutA(hdcWindow, Mouse::Xf, Mouse::Yf, "KEYBOARD MODE", 13);
+    else if (MainThread::showmessage == 2) TextOutA(hdcWindow, Mouse::Xf, Mouse::Yf, "CURSOR MODE", 11);
+    else if (MainThread::showmessage == 69) TextOutA(hdcWindow, Mouse::Xf, Mouse::Yf, "DISABLED", 8);
+    else if (MainThread::showmessage == 70) TextOutA(hdcWindow, Mouse::Xf, Mouse::Yf, "ENABLED", 7);
+    else if (MainThread::showmessage == 12) TextOutA(hdcWindow, 20, 20, "CONTROLLER DISCONNECTED", 23);
     else if (drawfakecursor && mode == 1 && onoroff) {
-        Mouse::DrawBeautifulCursor(hdcWindow);
+        
     }
+    Mouse::DrawBeautifulCursor(hdcWindow);
     ReleaseDC(hwnd, hdcWindow);
 }
 
 DWORD WINAPI ThreadFunction(LPVOID lpParam) {
     LOG("ThreadFunction started.");
-
+    
     LoadIniSettings();
     LOG("INI settings is Loaded");
 
@@ -108,6 +111,30 @@ DWORD WINAPI ThreadFunction(LPVOID lpParam) {
         return 0;
     }
     LOG("Initial window handle acquired: 0x%p", hwnd);
+
+    InitializeCriticalSection(&ScanThread::critical);
+    if (!ScanThread::enumeratebmps()) //false means no bmps found. also counts statics
+    { 
+        LOG("BMPs enumerated but not found: 0x%p", hwnd);
+        if (ScanThread::scanoption == 1)
+        {
+            ScanThread::scanoption = 0;
+            LOG("Error. Nothing to scan for. Disabling scanoption: 0x%p", hwnd);
+        }
+    }
+    else {
+        LOG("BMPs found: 0x%p", hwnd);
+        ScanThread::staticPointA.assign(ScanThread::numphotoA + 1, POINT{ 0, 0 });
+        ScanThread::staticPointB.assign(ScanThread::numphotoB + 1, POINT{ 0, 0 });
+        ScanThread::staticPointX.assign(ScanThread::numphotoX + 1, POINT{ 0, 0 });
+        ScanThread::staticPointY.assign(ScanThread::numphotoY + 1, POINT{ 0, 0 });
+    }
+    ScanThread::initovector();
+    if (ScanThread::scanoption == 1)
+    { //starting bmp continous scanner
+        ScanThread::StartScanThread(g_hModule, ScanThread::Aisstatic, ScanThread::Bisstatic, ScanThread::Xisstatic, ScanThread::Yisstatic, ScanThread::scanoption);
+        LOG("BMP scanner started: 0x%p", hwnd);
+    }
 
     // Initialize Fake Cursor
     if (drawProtoFakeCursor == 1) {
@@ -227,7 +254,7 @@ DWORD WINAPI ThreadFunction(LPVOID lpParam) {
                 }
             }
 
-            if (showmessage == 12) showmessage = 0; // "disconnected" message on reconnect
+            if (MainThread::showmessage == 12) MainThread::showmessage = 0; // "disconnected" message on reconnect
 
             if (!disableOverlayOptions && OverlayMenu::state.isMenuOpen) {
                 OverlayMenu::state.ProcessInput(state);
@@ -305,7 +332,9 @@ DWORD WINAPI ThreadFunction(LPVOID lpParam) {
 
                         //ProtoInput Fake Cursor update
                         if (drawProtoFakeCursor == 1) {
+                            EnterCriticalSection(&ScanThread::critical);
                             FakeCursor::NotifyUpdatedCursorPosition();
+                            LeaveCriticalSection(&ScanThread::critical);
                         }
 
                         ULONGLONG currentTime = GetTickCount64();
@@ -317,7 +346,7 @@ DWORD WINAPI ThreadFunction(LPVOID lpParam) {
                             else {
                                 POINT screenPos = { (LONG)Mouse::Xf, (LONG)Mouse::Yf };
                                 ClientToScreen(hwnd, &screenPos);
-                                Input::SendAction(screenPos.x, screenPos.y);
+                                Input::SendMouseMove(screenPos.x, screenPos.y);
                             }
                         }
                     }
@@ -325,14 +354,14 @@ DWORD WINAPI ThreadFunction(LPVOID lpParam) {
             }
         }
         else {
-            showmessage = 12; // Controller disconnected
+            MainThread::showmessage = 12; // Controller disconnected
         }
 
         // Drawing and Message
         DrawOverlay();
-        if (showmessage != 0 && showmessage != 12) {
+        if (MainThread::showmessage != 0 && MainThread::showmessage != 12) {
             if (++counter > 150) {
-                showmessage = 0;
+                MainThread::showmessage = 0;
                 counter = 0;
             }
         }
@@ -346,7 +375,7 @@ DWORD WINAPI ThreadFunction(LPVOID lpParam) {
     if (g_GamepadMethod == GamepadMethod::SDL2) {
         SDL2_Cleanup();
     }
-
+    DeleteCriticalSection(&ScanThread::critical);
     LOG("ThreadFunction gracefully exiting.");
     return 0;
 }

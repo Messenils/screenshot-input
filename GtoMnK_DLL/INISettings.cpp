@@ -3,6 +3,7 @@
 #include "Logging.h"
 #include "InputState.h" 
 #include "Input.h"
+#include "ScanThread.h"
 
 extern HMODULE g_hModule;
 
@@ -254,4 +255,22 @@ void LoadIniSettings() {
     buttonStates[CUSTOM_ID_RSL].actions = Input::ParseActionString(buffer);
     GetPrivateProfileStringA("KeyMapping", "RSR", "0", buffer, sizeof(buffer), iniPath.c_str());
     buttonStates[CUSTOM_ID_RSR].actions = Input::ParseActionString(buffer);
+
+	// [ScannerOptions] //input type 0 is move and click. 1 is only click. 2 is only move.
+    ScanThread::scanAtype = GetPrivateProfileIntA("ScannerOptions", "AbmpInputAction", 0, iniPath.c_str());
+    ScanThread::scanBtype = GetPrivateProfileIntA("ScannerOptions", "BbmpInputAction", 0, iniPath.c_str());
+    ScanThread::scanXtype = GetPrivateProfileIntA("ScannerOptions", "XbmpInputAction", 0, iniPath.c_str());
+    ScanThread::scanYtype = GetPrivateProfileIntA("ScannerOptions", "YbmpInputAction", 0, iniPath.c_str());
+    ScanThread::Ctype = GetPrivateProfileIntA("ScannerOptions", "RSBbmpInputAction", 0, iniPath.c_str());
+    ScanThread::Dtype = GetPrivateProfileIntA("ScannerOptions", "LSBbmpInputAction", 0, iniPath.c_str());
+    ScanThread::Etype = GetPrivateProfileIntA("ScannerOptions", "RBbmpInputAction", 0, iniPath.c_str());
+    ScanThread::Ftype = GetPrivateProfileIntA("ScannerOptions", "LBbmpInputAction", 0, iniPath.c_str());
+
+    ScanThread::scanoption = GetPrivateProfileIntA("ScannerOptions", "PreScan", 0, iniPath.c_str());
+    ScanThread::ShoulderNextBMP = GetPrivateProfileIntA("ScannerOptions", "ShouldersScrollPoints", 0, iniPath.c_str());
+
+    ScanThread::Aisstatic = GetPrivateProfileIntA("ScannerOptions", "Astatic", 0, iniPath.c_str());
+    ScanThread::Bisstatic = GetPrivateProfileIntA("ScannerOptions", "Bstatic", 0, iniPath.c_str());
+    ScanThread::Xisstatic = GetPrivateProfileIntA("ScannerOptions", "Xstatic", 0, iniPath.c_str());
+    ScanThread::Yisstatic = GetPrivateProfileIntA("ScannerOptions", "Ystatic", 0, iniPath.c_str());
 }
